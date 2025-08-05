@@ -4,6 +4,26 @@ from shomer.domain.ports.video_source import IVideoSource
 from shomer.domain.ports.renderer import IRenderer
 from shomer.application.detect_people import DetectPeopleUseCase
 from shomer.application.detect_faces import DetectFacesUseCase
+from datetime import datetime
+import httpx
+import asyncio
+
+
+async def send_log(count: int, details: dict = None):
+    """
+    Envia um registro de log para o backend FastAPI.
+    """
+    payload = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "count": count,
+        "details": details or {}
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "http://localhost:8000/logs",  # ou "http://mongo-network-alias:8000" no Compose
+            json=payload
+        )
+        resp.raise_for_status()
 
 
 class Orchestrator:
@@ -26,6 +46,12 @@ class Orchestrator:
                 continue
 
             people = self.people_uc.execute(frame)
+            # dispara log (contagem de pessoas)
+            try:
+                asyncio.create_task(send_log(len(people), {"mode": "usb_camera"}))
+            except Exception as e:
+                print(f"❌ Falha ao enviar log: {e}")
+
             faces = self.face_uc.execute(frame, people)
 
             # Chama render apenas com os três parâmetros esperados

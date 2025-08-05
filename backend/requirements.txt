@@ -18,3 +18,10 @@ passlib[bcrypt]
 bcrypt>=3.1.7
 motor>=3.3.0
 python-dotenv>=1.0.0
+python-jose[cryptography]>=3.3.0
+
+# HTTP client para envio de logs
+httpx>=0.24.0
+
+# Interface gráfica
+PyQt5>=5.15.0

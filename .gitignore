@@ -7,7 +7,6 @@
 *.env
 
 # Credenciais e configurações de banco de dadosmongo-init/*
-mongo-init/
 config/database.json
 config/secrets.json
 secrets.json

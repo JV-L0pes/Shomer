@@ -85,6 +85,13 @@ export interface StreamControlResponse {
   current_source: string;
 }
 
+export interface Log {
+  timestamp: string;
+  count: number;
+  details: Record<string, any>;
+  created_at: string;
+}
+
 // Cache simples para evitar requests excessivos
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 100; // 100ms cache para stats
@@ -199,6 +206,19 @@ export async function controlStream(action: "start" | "stop"): Promise<StreamCon
   } catch (error) {
     console.error("Erro ao controlar stream:", error);
     throw new Error(`Falha ao ${action === "start" ? "iniciar" : "parar"} stream`);
+  }
+}
+
+/**
+ * Busca os últimos logs do backend.
+ */
+export async function getLogs(limit = 100): Promise<Log[]> {
+  try {
+    const response = await api.get<Log[]>(`/logs?limit=${limit}`);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar logs:", error);
+    throw new Error(`Erro ao buscar logs: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
   }
 }
 

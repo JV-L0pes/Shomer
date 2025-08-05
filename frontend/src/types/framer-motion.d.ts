@@ -8,6 +8,8 @@ declare module 'framer-motion' {
     transition?: any;
     whileHover?: any;
     whileTap?: any;
+    whileInView?: any;
+    viewport?: any;
     className?: string;
     children?: ReactNode;
     onClick?: () => void;

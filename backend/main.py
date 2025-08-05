@@ -9,16 +9,34 @@ import csv
 import io
 import asyncio
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import List
 from fastapi import FastAPI, Response, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
+from jose import JWTError, jwt
+from dotenv import load_dotenv
 
 from detection import OptimizedDetector
 from config import Config
 from db import users_collection, logs_collection
+
+# carrega variáveis de .env
+load_dotenv()
+
+# constantes para JWT
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES", "60"))
+
+# token de convite único (ou você pode ler vários e separar)
+INVITATION_TOKEN = os.getenv("INVITATION_TOKEN")
+
+# OAuth2 scheme para autenticação
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 # Configuração de logging otimizada
 import logging
@@ -63,15 +81,26 @@ frame_cache = {
 class RegisterModel(BaseModel):
     username: str = Field(..., min_length=3)
     password: str = Field(..., min_length=6)
+    invitationToken: str = Field(..., min_length=1)
 
 class LoginModel(BaseModel):
     username: str
     password: str
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
 class LogModel(BaseModel):
     timestamp: datetime
     count: int
     details: dict  # opcional: pode guardar info extra da detecção
+
+class LogOutModel(BaseModel):
+    timestamp: datetime
+    count: int
+    details: dict
+    created_at: datetime
 
 # Funções de autenticação
 def hash_password(password: str) -> str:
@@ -79,6 +108,43 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    """Cria um token JWT."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_token(token: str):
+    """Verifica um token JWT."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        return username
+    except JWTError:
+        return None
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    """Dependency para obter usuário atual a partir do token."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if not username:
+            raise HTTPException(401, "Token inválido")
+    except JWTError:
+        raise HTTPException(401, "Token inválido")
+    
+    user = await users_collection.find_one({"username": username})
+    if not user:
+        raise HTTPException(401, "Usuário não existe")
+    return username
 
 @app.on_event("startup")
 async def startup_event():
@@ -395,7 +461,7 @@ async def get_performance():
 
 # Novos endpoints para controle de câmera
 @app.post("/camera/switch")
-async def switch_camera(source: str):
+async def switch_camera(source: str, current_user: str = Depends(get_current_user)):
     """Troca entre webcam e IP camera."""
     global detector, camera_config
     
@@ -416,13 +482,14 @@ async def switch_camera(source: str):
         # Aguardar inicialização
         await asyncio.sleep(1.0)
         
-        logger.info(f"✅ Câmera trocada para: {source}")
+        logger.info(f"✅ Câmera trocada para: {source} por usuário: {current_user}")
         
         return {
             "success": True,
             "message": f"Câmera trocada para {source}",
             "current_source": source,
-            "stream_enabled": camera_config["stream_enabled"]
+            "stream_enabled": camera_config["stream_enabled"],
+            "user": current_user
         }
         
     except Exception as e:
@@ -430,7 +497,7 @@ async def switch_camera(source: str):
         raise HTTPException(status_code=500, detail=f"Erro ao trocar câmera: {str(e)}")
 
 @app.post("/stream/control")
-async def control_stream(action: str):
+async def control_stream(action: str, current_user: str = Depends(get_current_user)):
     """Controla o stream (start/stop)."""
     global camera_config
     
@@ -445,13 +512,14 @@ async def control_stream(action: str):
             camera_config["stream_enabled"] = False
             message = "Stream parado"
         
-        logger.info(f"✅ {message}")
+        logger.info(f"✅ {message} por usuário: {current_user}")
         
         return {
             "success": True,
             "message": message,
             "stream_enabled": camera_config["stream_enabled"],
-            "current_source": "webcam" if camera_config["current_source"] == 0 else "ip_camera"
+            "current_source": "webcam" if camera_config["current_source"] == 0 else "ip_camera",
+            "user": current_user
         }
         
     except Exception as e:
@@ -481,7 +549,7 @@ async def get_config():
     }
 
 @app.get("/export_log.csv")
-async def export_log():
+async def export_log(current_user: str = Depends(get_current_user)):
     """Export simplificado com total de pessoas capturadas."""
     global detector
     
@@ -494,7 +562,8 @@ async def export_log():
         "timestamp",
         "total_pessoas_capturadas",
         "pessoas_atuais",
-        "fps_sistema"
+        "fps_sistema",
+        "usuario_exportacao"
     ])
     
     if detector:
@@ -508,7 +577,8 @@ async def export_log():
             current_time.isoformat(),
             total_captured,
             current_persons,
-            round(current_fps, 1)
+            round(current_fps, 1),
+            current_user
         ])
     
     csv_data = buffer.getvalue()
@@ -542,6 +612,11 @@ async def health():
 @app.post("/register")
 async def register(data: RegisterModel):
     """Registra um novo usuário."""
+    # valida token de convite
+    if data.invitationToken != INVITATION_TOKEN:
+        raise HTTPException(403, "Token de convite inválido")
+
+    # verifica se usuário já existe
     existing = await users_collection.find_one({"username": data.username})
     if existing:
         raise HTTPException(400, "Usuário já existe")
@@ -553,22 +628,50 @@ async def register(data: RegisterModel):
     })
     return {"msg": "Registrado com sucesso"}
 
-@app.post("/login")
+@app.post("/login", response_model=Token)
 async def login(data: LoginModel):
     """Autentica um usuário."""
     user = await users_collection.find_one({"username": data.username})
     if not user or not verify_password(data.password, user["password"]):
         raise HTTPException(401, "Credenciais inválidas")
-    # aqui você pode gerar um JWT ou session
-    return {"msg": "Login bem-sucedido"}
+    # Gera token JWT
+    to_encode = {"sub": data.username}
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    access_token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/logs")
-async def create_log(data: LogModel):
+async def create_log(
+    data: LogModel,
+    current_user: str = Depends(get_current_user),
+):
     """Cria um novo log de detecção."""
     payload = data.dict()
     payload["created_at"] = datetime.utcnow()
+    payload["user"] = current_user
     await logs_collection.insert_one(payload)
     return {"msg": "Log registrado"}
+
+@app.get("/me")
+async def get_current_user_info(current_user: str = Depends(get_current_user)):
+    """Retorna informações do usuário atual."""
+    user = await users_collection.find_one({"username": current_user})
+    return {
+        "username": current_user,
+        "created_at": user["created_at"]
+    }
+
+@app.get("/logs", response_model=List[LogOutModel])
+async def list_logs(limit: int = 100):
+    """
+    Retorna os últimos `limit` logs, em ordem decrescente de timestamp.
+    """
+    cursor = logs_collection.find().sort("timestamp", -1).limit(limit)
+    results = []
+    async for doc in cursor:
+        results.append(LogOutModel(**doc))
+    return results
 
 @app.on_event("shutdown")
 async def shutdown_event():
