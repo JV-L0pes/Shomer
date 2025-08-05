@@ -1,0 +1,42 @@
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: shomer-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      # Cria o usuário root no init do container
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: Shomer123
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d  # scripts de inicialização
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: shomer-backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: shomer-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+
+volumes:
+  mongo_data:

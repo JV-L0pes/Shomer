@@ -1,0 +1,16 @@
+# Dockerfile.frontend
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copia package.json e lockfile
+COPY package.json package-lock.json ./
+
+# Instala dependências
+RUN npm ci
+
+# Copia o resto do código
+COPY . .
+
+# Inicia Vite dev-server em 0.0.0.0
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"] 
