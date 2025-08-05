@@ -1,29 +1,21 @@
-// frontend/src/components/Navbar.tsx - Atualizado com Autenticação
 import React from "react";
-import { Book, Home, Code2, LogOut, User, Camera } from "lucide-react";
+import { Book, Home, Code2, LogOut, User as UserIcon, Camera } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-interface User {
-  id: string;
-  username: string;
-  email: string;
-  createdAt: string;
-}
-
 interface NavbarProps {
-  username: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    createdAt: string;
+  };
   onLogout: () => void;
 }
 
-export default function Navbar({ username, onLogout }: NavbarProps) {
+export default function Navbar({ user, onLogout }: NavbarProps) {
   const nav = useNavigate();
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   return (
-    <nav className="w-full py-4 px-8 bg-bg/80 backdrop-blur-md fixed top-0 left-0 z-50 border-b border-gray-700/50">
+    <nav className="w-full py-4 px-8 bg-gray-900/80 backdrop-blur-md fixed top-0 left-0 z-50 border-b border-gray-700/50">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         {/* Logo */}
         <div
@@ -40,7 +32,6 @@ export default function Navbar({ username, onLogout }: NavbarProps) {
 
         {/* Navigation + User Info */}
         <div className="flex items-center gap-6">
-          {/* Menu de Navegação */}
           <ul className="hidden md:flex gap-6 text-gray-300">
             <li
               className="hover:text-white transition cursor-pointer flex items-center gap-1"
@@ -51,7 +42,7 @@ export default function Navbar({ username, onLogout }: NavbarProps) {
             <li className="hover:text-white transition cursor-pointer flex items-center gap-1">
               <Book size={16} /> Relatórios
               <span className="text-xs text-gray-300 ml-1">
-                em desenvolvimento
+                (em desenvolvimento)
               </span>
             </li>
             <li className="hover:text-white transition cursor-pointer flex items-center gap-1">
@@ -67,17 +58,16 @@ export default function Navbar({ username, onLogout }: NavbarProps) {
             </li>
           </ul>
 
-          {/* User Section */}
           <div className="flex items-center gap-3 pl-6 border-l border-gray-700">
             {/* User Info */}
             <div className="hidden sm:flex items-center gap-2">
               <div className="p-2 bg-gray-700/50 rounded-lg">
-                <User className="w-4 h-4 text-cyan-400" />
+                <UserIcon className="w-4 h-4 text-cyan-400" />
               </div>
               <div className="text-right">
                 <div className="text-xs text-gray-400">Bem-vindo,</div>
                 <div className="text-sm font-semibold text-cyan-400">
-                  {username}
+                  {user.username}
                 </div>
               </div>
             </div>
@@ -94,5 +84,5 @@ export default function Navbar({ username, onLogout }: NavbarProps) {
         </div>
       </div>
     </nav>
-  );
+);
 }

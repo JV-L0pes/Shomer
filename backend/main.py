@@ -80,6 +80,7 @@ frame_cache = {
 # Modelos Pydantic para autenticação e logs
 class RegisterModel(BaseModel):
     username: str = Field(..., min_length=3)
+    email: str = Field(..., min_length=1)
     password: str = Field(..., min_length=6)
     invitationToken: str = Field(..., min_length=1)
 
@@ -90,6 +91,7 @@ class LoginModel(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user: dict
 
 class LogModel(BaseModel):
     timestamp: datetime
@@ -623,6 +625,7 @@ async def register(data: RegisterModel):
     hashed = hash_password(data.password)
     await users_collection.insert_one({
         "username": data.username,
+        "email": data.email,
         "password": hashed,
         "created_at": datetime.utcnow()
     })
@@ -639,7 +642,17 @@ async def login(data: LoginModel):
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     access_token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return {"access_token": access_token, "token_type": "bearer"}
+    # devolve também o email e id
+    return {
+      "access_token": access_token,
+      "token_type": "bearer",
+      "user": {
+        "id": str(user["_id"]),
+        "username": user["username"],
+        "email": user.get("email", ""),
+        "createdAt": user["created_at"].isoformat()
+      }
+    }
 
 @app.post("/logs")
 async def create_log(

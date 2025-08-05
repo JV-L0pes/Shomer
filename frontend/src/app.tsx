@@ -47,7 +47,7 @@ function Dashboard({
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
       {/* Navbar com info do usuário */}
-      <Navbar username={appState.user!.username} onLogout={onLogout} />
+      <Navbar user={appState.user!} onLogout={onLogout} />
 
       {/* Hero Section */}
       <Hero />
@@ -130,16 +130,19 @@ export default function App() {
   // Verificar token salvo no localStorage ao inicializar
   useEffect(() => {
     const token = localStorage.getItem("authToken");
-    if (token && validateToken(token)) {
-      const userData = getUserFromToken(token);
-      setUsername(userData.username);
-      const user: User = {
-        id: "1", // Placeholder
-        username: userData.username,
-        email: "", // Placeholder
-        createdAt: new Date().toISOString(),
-      };
-      setAppState((prev) => ({ ...prev, user }));
+    const userData = sessionStorage.getItem("shomer_user");
+    
+    if (token && validateToken(token) && userData) {
+      try {
+        const user = JSON.parse(userData);
+        setUsername(user.username);
+        setAppState((prev) => ({ ...prev, user }));
+      } catch (error) {
+        console.error("Erro ao parsear dados do usuário:", error);
+        // Limpar dados inválidos
+        localStorage.removeItem("authToken");
+        sessionStorage.removeItem("shomer_user");
+      }
     }
   }, []);
 
@@ -182,6 +185,7 @@ export default function App() {
     setUsername(null);
     setAppState((prev) => ({ ...prev, user: null }));
     localStorage.removeItem("authToken");
+    sessionStorage.removeItem("shomer_user");
     console.log("👋 Logout realizado");
   };
 
@@ -210,7 +214,7 @@ export default function App() {
           appState.user ? (
             <Navigate to="/demo" replace />
           ) : (
-            <AuthPage />
+            <AuthPage onLogin={handleLogin} />
           )
         } 
       />
@@ -221,7 +225,7 @@ export default function App() {
         element={
           username ? (
             <>
-              <Navbar username={username} onLogout={handleLogout} />
+              <Navbar user={appState.user!} onLogout={handleLogout} />
               <Demo 
                 stats={{
                   current: 0,

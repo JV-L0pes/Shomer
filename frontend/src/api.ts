@@ -370,27 +370,39 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface RegisterRequest {
+export interface RegisterPayload {
   username: string;
   password: string;
   invitationToken: string;
+  email?: string;  // deixar opcional
 }
 
 export interface AuthResponse {
   access_token: string;
   token_type: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    createdAt: string;
+  };
 }
 
 // Funções de autenticação
 export async function loginApi(payload: { username: string; password: string }) {
-  const res = await fetch(`${import.meta.env.VITE_API_URL}/login`, { 
+  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const res = await fetch(`${apiUrl}/login`, { 
     method: "POST", 
     headers: {"Content-Type":"application/json"}, 
     body: JSON.stringify(payload) 
   });
   if (!res.ok) throw await res.json();
-  const { access_token } = await res.json();
-  localStorage.setItem("authToken", access_token);
+  const data = await res.json();
+  // salva token
+  localStorage.setItem("authToken", data.access_token);
+  // salva user no sessionStorage
+  sessionStorage.setItem("shomer_user", JSON.stringify(data.user));
+  return data;
 }
 
 // Funções para validação de token
@@ -404,11 +416,12 @@ export function getUserFromToken(token: string): { username: string } {
   return { username: "usuario" };
 }
 
-export async function registerApi(payload: { username: string; password: string; invitationToken: string; }) {
-  const res = await fetch(`${import.meta.env.VITE_API_URL}/register`, { 
-    method: "POST", 
-    headers: {"Content-Type":"application/json"}, 
-    body: JSON.stringify(payload) 
+export async function registerApi(payload: RegisterPayload) {
+  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const res = await fetch(`${apiUrl}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw await res.json();
 }
