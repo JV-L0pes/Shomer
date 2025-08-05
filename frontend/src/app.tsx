@@ -7,7 +7,7 @@ import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import Demo from "./components/Demo";
 import AuthPage from "./components/AuthPage";
-import { useRealtimeStats, exportLog, checkHealth } from "./api";
+import { useRealtimeStats, exportLog, checkHealth, validateToken, getUserFromToken } from "./api";
 
 interface User {
   id: string;
@@ -47,7 +47,7 @@ function Dashboard({
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
       {/* Navbar com info do usuário */}
-      <Navbar user={appState.user!} onLogout={onLogout} />
+      <Navbar username={appState.user!.username} onLogout={onLogout} />
 
       {/* Hero Section */}
       <Hero />
@@ -119,6 +119,7 @@ function Dashboard({
 }
 
 export default function App() {
+  const [username, setUsername] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>({
     user: null,
     backendHealth: "checking",
@@ -126,16 +127,19 @@ export default function App() {
     exportStatus: "idle",
   });
 
-  // Verificar usuário salvo no sessionStorage ao inicializar
+  // Verificar token salvo no localStorage ao inicializar
   useEffect(() => {
-    const savedUser = sessionStorage.getItem("shomer_user");
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        setAppState((prev) => ({ ...prev, user }));
-      } catch (error) {
-        sessionStorage.removeItem("shomer_user");
-      }
+    const token = localStorage.getItem("authToken");
+    if (token && validateToken(token)) {
+      const userData = getUserFromToken(token);
+      setUsername(userData.username);
+      const user: User = {
+        id: "1", // Placeholder
+        username: userData.username,
+        email: "", // Placeholder
+        createdAt: new Date().toISOString(),
+      };
+      setAppState((prev) => ({ ...prev, user }));
     }
   }, []);
 
@@ -169,14 +173,15 @@ export default function App() {
 
   // Handlers de autenticação
   const handleLogin = (user: User) => {
+    setUsername(user.username);
     setAppState((prev) => ({ ...prev, user }));
-    sessionStorage.setItem("shomer_user", JSON.stringify(user));
     console.log(`✅ Login realizado: ${user.username}`);
   };
 
   const handleLogout = () => {
+    setUsername(null);
     setAppState((prev) => ({ ...prev, user: null }));
-    sessionStorage.removeItem("shomer_user");
+    localStorage.removeItem("authToken");
     console.log("👋 Logout realizado");
   };
 
@@ -205,7 +210,7 @@ export default function App() {
           appState.user ? (
             <Navigate to="/demo" replace />
           ) : (
-            <AuthPage onLogin={handleLogin} />
+            <AuthPage />
           )
         } 
       />
@@ -214,13 +219,17 @@ export default function App() {
       <Route 
         path="/demo" 
         element={
-          appState.user ? (
-            <Dashboard 
-              appState={appState}
-              onLogout={handleLogout}
-              onExport={handleExport}
-              performHealthCheck={performHealthCheck}
-            />
+          username ? (
+            <>
+              <Navbar username={username} onLogout={handleLogout} />
+              <Demo 
+                stats={{
+                  current: 0,
+                  total_passed: 0,
+                }}
+                onExport={handleExport}
+              />
+            </>
           ) : (
             <Navigate to="/login" replace />
           )
@@ -230,8 +239,8 @@ export default function App() {
       {/* Redireciona raiz para login */}
       <Route path="/" element={<Navigate to="/login" replace />} />
       
-      {/* Redireciona qualquer rota não encontrada para login */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* Redireciona qualquer rota não encontrada */}
+      <Route path="*" element={<Navigate to={username ? "/demo" : "/login"} replace />} />
     </Routes>
   );
 }

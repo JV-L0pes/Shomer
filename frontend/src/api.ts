@@ -3,7 +3,7 @@ import axios from "axios";
 
 // Configurar axios com otimizações
 const api = axios.create({
-  baseURL: "http://localhost:8000",  // Corrigido para porta 8000
+  baseURL: "http://localhost:8000", // Corrigido para porta 8000
   timeout: 5000,
   headers: {
     "Cache-Control": "no-cache",
@@ -183,12 +183,18 @@ export async function getCameraStatus(): Promise<CameraStatus | null> {
   }
 }
 
-export async function switchCamera(source: string): Promise<CameraSwitchResponse | null> {
+export async function switchCamera(
+  source: string
+): Promise<CameraSwitchResponse | null> {
   try {
-    const response = await api.post<CameraSwitchResponse>("/camera/switch", null, {
-      params: { source },
-      timeout: 10000, // Timeout maior para troca de câmera
-    });
+    const response = await api.post<CameraSwitchResponse>(
+      "/camera/switch",
+      null,
+      {
+        params: { source },
+        timeout: 10000, // Timeout maior para troca de câmera
+      }
+    );
     return response.data;
   } catch (error) {
     console.error("Erro ao trocar câmera:", error);
@@ -196,16 +202,24 @@ export async function switchCamera(source: string): Promise<CameraSwitchResponse
   }
 }
 
-export async function controlStream(action: "start" | "stop"): Promise<StreamControlResponse | null> {
+export async function controlStream(
+  action: "start" | "stop"
+): Promise<StreamControlResponse | null> {
   try {
-    const response = await api.post<StreamControlResponse>("/stream/control", null, {
-      params: { action },
-      timeout: 5000,
-    });
+    const response = await api.post<StreamControlResponse>(
+      "/stream/control",
+      null,
+      {
+        params: { action },
+        timeout: 5000,
+      }
+    );
     return response.data;
   } catch (error) {
     console.error("Erro ao controlar stream:", error);
-    throw new Error(`Falha ao ${action === "start" ? "iniciar" : "parar"} stream`);
+    throw new Error(
+      `Falha ao ${action === "start" ? "iniciar" : "parar"} stream`
+    );
   }
 }
 
@@ -218,7 +232,11 @@ export async function getLogs(limit = 100): Promise<Log[]> {
     return response.data;
   } catch (error) {
     console.error("Erro ao buscar logs:", error);
-    throw new Error(`Erro ao buscar logs: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    throw new Error(
+      `Erro ao buscar logs: ${
+        error instanceof Error ? error.message : "Erro desconhecido"
+      }`
+    );
   }
 }
 
@@ -236,8 +254,8 @@ export function useRealtimeStats(intervalMs: number = 500) {
   const [isConnected, setIsConnected] = React.useState(false);
 
   React.useEffect(() => {
-    let statsInterval: NodeJS.Timeout;
-    let perfInterval: NodeJS.Timeout;
+    let statsInterval: number;
+    let perfInterval: number;
 
     const updateStats = async () => {
       try {
@@ -266,12 +284,12 @@ export function useRealtimeStats(intervalMs: number = 500) {
     updatePerformance();
 
     // Intervals
-    statsInterval = setInterval(updateStats, intervalMs);
-    perfInterval = setInterval(updatePerformance, intervalMs * 4); // Performance a cada 2s
+    statsInterval = window.setInterval(updateStats, intervalMs);
+    perfInterval = window.setInterval(updatePerformance, intervalMs * 4); // Performance a cada 2s
 
     return () => {
-      clearInterval(statsInterval);
-      clearInterval(perfInterval);
+      window.clearInterval(statsInterval);
+      window.clearInterval(perfInterval);
     };
   }, [intervalMs]);
 
@@ -280,7 +298,9 @@ export function useRealtimeStats(intervalMs: number = 500) {
 
 // Hook para controle de câmera
 export function useCameraControl() {
-  const [cameraStatus, setCameraStatus] = React.useState<CameraStatus | null>(null);
+  const [cameraStatus, setCameraStatus] = React.useState<CameraStatus | null>(
+    null
+  );
   const [isLoading, setIsLoading] = React.useState(false);
 
   const fetchCameraStatus = React.useCallback(async () => {
@@ -292,35 +312,41 @@ export function useCameraControl() {
     }
   }, []);
 
-  const switchCameraSource = React.useCallback(async (source: string) => {
-    setIsLoading(true);
-    try {
-      const result = await switchCamera(source);
-      if (result) {
-        await fetchCameraStatus(); // Atualizar status após troca
+  const switchCameraSource = React.useCallback(
+    async (source: string) => {
+      setIsLoading(true);
+      try {
+        const result = await switchCamera(source);
+        if (result) {
+          await fetchCameraStatus(); // Atualizar status após troca
+        }
+        return result;
+      } catch (error) {
+        throw error;
+      } finally {
+        setIsLoading(false);
       }
-      return result;
-    } catch (error) {
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchCameraStatus]);
+    },
+    [fetchCameraStatus]
+  );
 
-  const toggleStream = React.useCallback(async (action: "start" | "stop") => {
-    setIsLoading(true);
-    try {
-      const result = await controlStream(action);
-      if (result) {
-        await fetchCameraStatus(); // Atualizar status após controle
+  const toggleStream = React.useCallback(
+    async (action: "start" | "stop") => {
+      setIsLoading(true);
+      try {
+        const result = await controlStream(action);
+        if (result) {
+          await fetchCameraStatus(); // Atualizar status após controle
+        }
+        return result;
+      } catch (error) {
+        throw error;
+      } finally {
+        setIsLoading(false);
       }
-      return result;
-    } catch (error) {
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchCameraStatus]);
+    },
+    [fetchCameraStatus]
+  );
 
   React.useEffect(() => {
     fetchCameraStatus();
@@ -337,3 +363,52 @@ export function useCameraControl() {
 
 // Importar React para o hook
 import React from "react";
+
+// Interfaces para autenticação
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  invitationToken: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+}
+
+// Funções de autenticação
+export async function loginApi(payload: { username: string; password: string }) {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/login`, { 
+    method: "POST", 
+    headers: {"Content-Type":"application/json"}, 
+    body: JSON.stringify(payload) 
+  });
+  if (!res.ok) throw await res.json();
+  const { access_token } = await res.json();
+  localStorage.setItem("authToken", access_token);
+}
+
+// Funções para validação de token
+export function validateToken(token: string): boolean {
+  // opcional: decodificar e verificar expiração
+  return true;
+}
+
+export function getUserFromToken(token: string): { username: string } {
+  // decodifique o JWT ou armazene o nome no payload
+  return { username: "usuario" };
+}
+
+export async function registerApi(payload: { username: string; password: string; invitationToken: string; }) {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/register`, { 
+    method: "POST", 
+    headers: {"Content-Type":"application/json"}, 
+    body: JSON.stringify(payload) 
+  });
+  if (!res.ok) throw await res.json();
+}

@@ -1,6 +1,7 @@
 // frontend/src/components/Navbar.tsx - Atualizado com Autenticação
 import React from "react";
 import { Book, Home, Code2, LogOut, User, Camera } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface User {
   id: string;
@@ -10,20 +11,25 @@ interface User {
 }
 
 interface NavbarProps {
-  user: User;
+  username: string;
   onLogout: () => void;
 }
 
-export default function Navbar({ user, onLogout }: NavbarProps) {
+export default function Navbar({ username, onLogout }: NavbarProps) {
+  const nav = useNavigate();
+
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
     <nav className="w-full py-4 px-8 bg-bg/80 backdrop-blur-md fixed top-0 left-0 z-50 border-b border-gray-700/50">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         {/* Logo */}
-        <div className="flex items-center gap-2">
+        <div
+          className="flex items-center gap-2 cursor-pointer"
+          onClick={() => nav("/demo")}
+        >
           <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg">
             <Camera className="w-6 h-6 text-white" />
           </div>
@@ -36,15 +42,17 @@ export default function Navbar({ user, onLogout }: NavbarProps) {
         <div className="flex items-center gap-6">
           {/* Menu de Navegação */}
           <ul className="hidden md:flex gap-6 text-gray-300">
-            <li 
+            <li
               className="hover:text-white transition cursor-pointer flex items-center gap-1"
-              onClick={scrollToTop}
+              onClick={() => nav("/demo")}
             >
               <Home size={16} /> Dashboard
             </li>
             <li className="hover:text-white transition cursor-pointer flex items-center gap-1">
               <Book size={16} /> Relatórios
-              <span className="text-xs text-gray-300 ml-1">em desenvolvimento</span>
+              <span className="text-xs text-gray-300 ml-1">
+                em desenvolvimento
+              </span>
             </li>
             <li className="hover:text-white transition cursor-pointer flex items-center gap-1">
               <Code2 size={16} />
@@ -69,7 +77,7 @@ export default function Navbar({ user, onLogout }: NavbarProps) {
               <div className="text-right">
                 <div className="text-xs text-gray-400">Bem-vindo,</div>
                 <div className="text-sm font-semibold text-cyan-400">
-                  {user.username}
+                  {username}
                 </div>
               </div>
             </div>
