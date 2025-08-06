@@ -4,12 +4,29 @@ import axios from "axios";
 // Configurar axios com otimizações
 const api = axios.create({
   baseURL: "http://localhost:8000", // Corrigido para porta 8000
-  timeout: 5000,
+  timeout: 15000, // Aumentado para 15 segundos
   headers: {
     "Cache-Control": "no-cache",
     Pragma: "no-cache",
   },
 });
+
+// Interceptor para adicionar token JWT automaticamente
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      console.log(`🔐 Token enviado para ${config.url}: ${token.substring(0, 20)}...`);
+    } else {
+      console.log(`⚠️ Nenhum token encontrado para ${config.url}`);
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 export interface Stats {
   current: number;
@@ -94,7 +111,7 @@ export interface Log {
 
 // Cache simples para evitar requests excessivos
 const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_DURATION = 100; // 100ms cache para stats
+const CACHE_DURATION = 10; // 10ms cache para stats (mínimo para debug)
 
 function getCached<T>(key: string): T | null {
   const cached = cache.get(key);
@@ -111,15 +128,20 @@ function setCache(key: string, data: any): void {
 export async function fetchStats(): Promise<Stats> {
   const cacheKey = "stats";
   const cached = getCached<Stats>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    console.log("📦 Stats do cache:", cached);
+    return cached;
+  }
 
   try {
+    console.log("🌐 Fazendo request para /stats...");
     const response = await api.get<Stats>("/stats");
     const stats = response.data;
+    console.log("✅ Stats recebidas do backend:", stats);
     setCache(cacheKey, stats);
     return stats;
   } catch (error) {
-    console.error("Erro ao buscar stats:", error);
+    console.error("❌ Erro ao buscar stats:", error);
     // Retornar dados padrão em caso de erro
     return {
       current: 0,
@@ -242,6 +264,8 @@ export async function getLogs(limit = 100): Promise<Log[]> {
 
 // Hook personalizado para monitoramento contínuo
 export function useRealtimeStats(intervalMs: number = 500) {
+  console.log("🔄 useRealtimeStats iniciado com intervalMs:", intervalMs);
+  
   const [stats, setStats] = React.useState<Stats>({
     current: 0,
     total_passed: 0,
@@ -260,9 +284,17 @@ export function useRealtimeStats(intervalMs: number = 500) {
     const updateStats = async () => {
       try {
         const newStats = await fetchStats();
+        console.log("🔄 Stats atualizadas:", newStats);
+        console.log("📊 Detalhes:", {
+          current: newStats.current,
+          total_passed: newStats.total_passed,
+          tracking: newStats.tracking,
+          fps: newStats.fps
+        });
         setStats(newStats);
         setIsConnected(true);
       } catch (error) {
+        console.error("❌ Erro ao atualizar stats:", error);
         setIsConnected(false);
         setStats((prev) => ({ ...prev, status: "error" }));
       }
@@ -366,7 +398,7 @@ import React from "react";
 
 // Interfaces para autenticação
 export interface LoginRequest {
-  username: string;
+  username: string; // Pode ser username ou email
   password: string;
 }
 

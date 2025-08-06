@@ -1,7 +1,12 @@
 # backend/config.py - Configurações do Sistema
 
 import os
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
+
+def brasilia_now():
+    """Retorna o horário atual de Brasília (GMT-3)."""
+    return datetime.now(timezone(timedelta(hours=-3)))
 
 class Config:
     """Configurações centralizadas do sistema Shomer."""
@@ -26,7 +31,7 @@ class Config:
     PORT = int(os.getenv("PORT", "8000"))
     
     # Configurações de Stream
-    STREAM_ENABLED_BY_DEFAULT = os.getenv("STREAM_ENABLED_BY_DEFAULT", "false").lower() == "true"
+    STREAM_ENABLED_BY_DEFAULT = os.getenv("STREAM_ENABLED_BY_DEFAULT", "true").lower() == "true"
     
     # Configurações do Banco de Dados
     MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://mongo:27017/shomerdb")

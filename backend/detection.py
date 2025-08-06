@@ -4,10 +4,11 @@ import cv2
 import threading
 import time
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Tuple
 from collections import deque
 import queue
+from config import brasilia_now
 
 # Configurações ultra-otimizadas
 YOLO_MODEL = 'yolov8n.pt'
@@ -55,7 +56,7 @@ class VisualDetector:
         self.person_tracking = {
             "active_persons": {},  # {person_id: {"entry_time": timestamp, "last_seen": timestamp, "bbox": coords}}
             "person_counter": 0,   # Contador único para cada pessoa
-            "session_start": datetime.now(),
+            "session_start": brasilia_now(),
             "total_entries": 0,
             "total_exits": 0,
             "current_session_persons": 0
@@ -124,6 +125,7 @@ class VisualDetector:
         
         if not self.cap:
             print("❌ [VISUAL] Câmera não encontrada, usando simulação")
+            print("💡 [VISUAL] Dica: Verifique se a webcam está conectada e funcionando")
             self.use_fake_camera = True
             return
         
@@ -160,11 +162,13 @@ class VisualDetector:
             # YOLOv8 para pessoas
             try:
                 from ultralytics import YOLO
+                print(f"🤖 [VISUAL] Carregando modelo YOLO: {YOLO_MODEL}")
                 self.person_model = YOLO(YOLO_MODEL)
                 self.person_model.fuse()
                 
                 # Warmup com frame menor para velocidade
                 dummy = np.zeros((320, 320, 3), dtype=np.uint8)
+                print("🔥 [VISUAL] Fazendo warmup do YOLO...")
                 _ = self.person_model(dummy, conf=CONF_THRESHOLD, classes=[0], verbose=False)
                 
                 print("✅ [VISUAL] YOLOv8 pronto para detecção de pessoas")
@@ -172,6 +176,8 @@ class VisualDetector:
                 
             except Exception as e:
                 print(f"⚠️  [VISUAL] YOLOv8 indisponível: {e}")
+                import traceback
+                print(f"❌ [VISUAL] Traceback YOLO: {traceback.format_exc()}")
                 self.yolo_available = False
             
             # InsightFace para rostos
@@ -231,6 +237,7 @@ class VisualDetector:
                 else:
                     ret, frame = self.cap.read()
                     if not ret or frame is None:
+                        print("⚠️ [VISUAL] Falha na captura de frame")
                         continue
                 
                 # Buffer ultra-otimizado - sempre substituir frame mais recente
@@ -280,6 +287,10 @@ class VisualDetector:
                 people_boxes, people_count = self._detect_people_with_boxes(frame)
                 face_boxes, faces_count = self._detect_faces_with_boxes(frame)
                 
+                # Log de debug ocasional
+                if people_count > 0:
+                    print(f"🔍 [VISUAL] Loop detectou {people_count} pessoas, {faces_count} rostos")
+                
                 # Sistema de tracking avançado
                 tracked_count = self._track_persons(people_boxes)
                 
@@ -308,6 +319,7 @@ class VisualDetector:
     def _detect_people_with_boxes(self, frame) -> Tuple[List[Tuple], int]:
         """Detecta pessoas e retorna bounding boxes ultra-otimizado."""
         if not self.yolo_available:
+            print("⚠️ [VISUAL] YOLO não disponível para detecção de pessoas")
             return [], 0
         
         try:
@@ -334,6 +346,10 @@ class VisualDetector:
                 for box in results.boxes.xyxy:
                     x1, y1, x2, y2 = map(int, box * scale_back)  # Escalar de volta
                     boxes.append((x1, y1, x2, y2))
+            
+            # Log de debug ocasional
+            if len(boxes) > 0:
+                print(f"👤 [VISUAL] Detectadas {len(boxes)} pessoas")
             
             return boxes, len(boxes)
             
@@ -524,7 +540,7 @@ class VisualDetector:
         # Log simplificado
         if len(self.log) % 50 == 0:
             self.log.append({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": brasilia_now().isoformat(),
                 "current": current_count,
                 "total_passed": self.total_passed,
                 "total_entries": self.person_tracking["total_entries"],

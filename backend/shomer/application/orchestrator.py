@@ -4,9 +4,13 @@ from shomer.domain.ports.video_source import IVideoSource
 from shomer.domain.ports.renderer import IRenderer
 from shomer.application.detect_people import DetectPeopleUseCase
 from shomer.application.detect_faces import DetectFacesUseCase
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import httpx
 import asyncio
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from config import brasilia_now
 
 
 async def send_log(count: int, details: dict = None):
@@ -14,7 +18,7 @@ async def send_log(count: int, details: dict = None):
     Envia um registro de log para o backend FastAPI.
     """
     payload = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": brasilia_now().isoformat() + "Z",
         "count": count,
         "details": details or {}
     }

@@ -47,9 +47,19 @@ export default function Demo({
     setLastStatsUpdate(new Date());
   }, [stats]);
 
+  // Debug: Log dos valores que estão sendo passados para os StatCards
+  useEffect(() => {
+    console.log("🎯 Demo - Valores para StatCards:", {
+      pessoasDetectadas: stats.current,
+      total: stats.tracking?.total_entries || stats.total_passed || 0,
+      performance: Math.round(backendFps),
+      statsCompleto: stats
+    });
+  }, [stats, backendFps]);
+
   // Determinar status de conexão baseado em múltiplos fatores
   const connectionStatus =
-    systemStatus === "operational" && backendFps > 0
+    systemStatus === "operational"
       ? "connected"
       : "disconnected";
 

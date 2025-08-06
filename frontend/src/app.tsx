@@ -36,13 +36,27 @@ function Dashboard({
   performHealthCheck: () => void;
 }) {
   const { stats, performance, isConnected } = useRealtimeStats(
-    appState.user ? 500 : 0
+    appState.user ? 500 : 10000
   );
 
   const systemStatus =
-    appState.user && appState.backendHealth === "healthy" && isConnected
+    appState.user && (appState.backendHealth === "healthy" || isConnected)
       ? "operational"
       : "degraded";
+      
+  console.log("🔧 Status do sistema:", {
+    user: !!appState.user,
+    backendHealth: appState.backendHealth,
+    isConnected,
+    systemStatus
+  });
+  
+  console.log("📊 Dados de stats:", {
+    current: stats.current,
+    total_passed: stats.total_passed,
+    tracking: stats.tracking,
+    fps: stats.fps
+  });
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
@@ -150,14 +164,17 @@ export default function App() {
   const performHealthCheck = async () => {
     if (!appState.user) return;
 
+    console.log("🔍 Executando health check...");
     try {
-      await checkHealth();
+      const health = await checkHealth();
+      console.log("✅ Health check bem-sucedido:", health);
       setAppState((prev) => ({
         ...prev,
         backendHealth: "healthy",
         lastHealthCheck: new Date(),
       }));
-    } catch {
+    } catch (error) {
+      console.error("❌ Health check falhou:", error);
       setAppState((prev) => ({
         ...prev,
         backendHealth: "unhealthy",
@@ -224,16 +241,12 @@ export default function App() {
         path="/demo" 
         element={
           username ? (
-            <>
-              <Navbar user={appState.user!} onLogout={handleLogout} />
-              <Demo 
-                stats={{
-                  current: 0,
-                  total_passed: 0,
-                }}
-                onExport={handleExport}
-              />
-            </>
+            <Dashboard 
+              appState={appState}
+              onLogout={handleLogout}
+              onExport={handleExport}
+              performHealthCheck={performHealthCheck}
+            />
           ) : (
             <Navigate to="/login" replace />
           )

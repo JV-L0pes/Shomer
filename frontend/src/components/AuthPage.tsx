@@ -15,7 +15,7 @@ import jwtDecode from "jwt-decode";
 import { registerApi, loginApi } from "../api";
 
 interface FormData {
-  username: string;
+  username: string; // Pode ser username ou email no login
   email: string;
   password: string;
   confirmPassword: string;
@@ -58,8 +58,8 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const validateField = (field: keyof FormData, value: string): string => {
     switch (field) {
       case "username":
-        if (!value) return "Nome de usuário é obrigatório";
-        if (value.length < 3) return "Mínimo 3 caracteres";
+        if (!value) return "Usuário ou email é obrigatório";
+        if (!isLogin && value.length < 3) return "Mínimo 3 caracteres";
         return "";
       case "email":
         if (!value) return "Email é obrigatório";
@@ -90,7 +90,10 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     if (isLogin) {
-      newErrors.username = validateField("username", formData.username);
+      // Para login, aceita username ou email
+      if (!formData.username) {
+        newErrors.username = "Usuário ou email é obrigatório";
+      }
       newErrors.password = validateField("password", formData.password);
     } else {
       newErrors.username = validateField("username", formData.username);
@@ -135,6 +138,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
        } else {
         await registerApi({
           username: formData.username,
+          email: formData.email,
           password: formData.password,
           invitationToken: formData.invitationToken,
         });
@@ -144,12 +148,21 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
       }
       navigate("/demo");
     } catch (err: any) {
+      console.error("Erro de autenticação:", err);
+      let errorMessage = "Erro interno. Tente novamente.";
+      
+      if (err.detail) {
+        errorMessage = Array.isArray(err.detail) 
+          ? err.detail.map((e: any) => e.msg || e.message).join(", ")
+          : err.detail;
+      } else if (err.msg) {
+        errorMessage = err.msg;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       setErrors({
-        general:
-          err.detail ||
-          err.msg ||
-          err.message ||
-          "Erro interno. Tente novamente.",
+        general: errorMessage,
       });
     } finally {
       setIsLoading(false);
@@ -195,7 +208,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
               {/* Username Field */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Nome de Usuário
+                  {isLogin ? "Usuário ou Email" : "Nome de Usuário"}
                 </label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -204,7 +217,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                     value={formData.username}
                     onChange={(e) => handleInputChange("username", e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-                    placeholder="Digite seu nome de usuário"
+                    placeholder={isLogin ? "Digite seu usuário ou email" : "Digite seu nome de usuário"}
                   />
                 </div>
                 {errors.username && (

@@ -9,19 +9,19 @@ import csv
 import io
 import asyncio
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from fastapi import FastAPI, Response, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from dotenv import load_dotenv
 
 from detection import OptimizedDetector
-from config import Config
+from config import Config, brasilia_now
 from db import users_collection, logs_collection
 
 # carrega variáveis de .env
@@ -79,13 +79,13 @@ frame_cache = {
 
 # Modelos Pydantic para autenticação e logs
 class RegisterModel(BaseModel):
-    username: str = Field(..., min_length=3)
-    email: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=6)
-    invitationToken: str = Field(..., min_length=1)
+    username: str = Field(..., min_length=3, description="Nome de usuário com mínimo 3 caracteres")
+    email: EmailStr = Field(..., description="Email válido")
+    password: str = Field(..., min_length=6, description="Senha com mínimo 6 caracteres")
+    invitationToken: str = Field(..., description="Token de convite válido")
 
 class LoginModel(BaseModel):
-    username: str
+    username: str = Field(..., description="Nome de usuário ou email")
     password: str
 
 class Token(BaseModel):
@@ -115,9 +115,9 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     """Cria um token JWT."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = brasilia_now() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = brasilia_now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -136,15 +136,20 @@ def verify_token(token: str):
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     """Dependency para obter usuário atual a partir do token."""
     try:
+        logger.info(f"🔐 Validando token: {token[:20]}...")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if not username:
+            logger.error("❌ Token sem username")
             raise HTTPException(401, "Token inválido")
-    except JWTError:
+        logger.info(f"✅ Token válido para usuário: {username}")
+    except JWTError as e:
+        logger.error(f"❌ Erro JWT: {e}")
         raise HTTPException(401, "Token inválido")
     
     user = await users_collection.find_one({"username": username})
     if not user:
+        logger.error(f"❌ Usuário não encontrado: {username}")
         raise HTTPException(401, "Usuário não existe")
     return username
 
@@ -160,10 +165,19 @@ async def startup_event():
         await asyncio.sleep(1.5)  # Reduzido para inicialização mais rápida
         logger.info("✅ Detector ultra-otimizado pronto")
         
+        # Verificar se detector foi criado corretamente
+        if detector:
+            logger.info(f"✅ Detector criado: {type(detector)}")
+            logger.info(f"✅ Detector running: {detector.running}")
+        else:
+            logger.error("❌ Detector não foi criado")
+        
         # Imprimir configurações
         Config.print_config()
     except Exception as e:
-        logger.error(f"❌ Erro: {e}")
+        logger.error(f"❌ Erro na inicialização: {e}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
 
 def encode_frame_ultra_fast(frame):
     """Codificação ultra-rápida com cache inteligente e qualidade otimizada."""
@@ -400,11 +414,12 @@ async def get_stats():
     global detector, camera_config
     
     if not detector:
+        logger.warning("❌ Detector não inicializado")
         return {"current": 0, "total_passed": 0, "status": "starting"}
     
     cache_ratio = frame_cache["cache_hits"] / max(frame_cache["cache_misses"], 1) * 100
     
-    return {
+    stats_data = {
         "current": detector.prev_count,
         "total_passed": detector.total_passed,
         "status": "active",
@@ -418,9 +433,23 @@ async def get_stats():
             "total_entries": detector.person_tracking["total_entries"],
             "total_exits": detector.person_tracking["total_exits"],
             "current_persons": detector.person_tracking["current_session_persons"],
-            "session_duration": (datetime.now() - detector.person_tracking["session_start"]).total_seconds()
+            "session_duration": (brasilia_now() - detector.person_tracking["session_start"]).total_seconds()
         }
     }
+    
+    logger.info(f"📊 Stats enviadas: current={stats_data['current']}, total={stats_data['total_passed']}, fps={stats_data['fps']}")
+    
+    # Verificar se detector está funcionando corretamente
+    if stats_data['current'] == 0 and detector.running:
+        logger.info("🔍 Detector rodando mas sem detecções - verificando status...")
+        # Verificar se os modelos estão carregados
+        if not detector.yolo_available:
+            logger.warning("⚠️ YOLO não está disponível - detecções podem falhar")
+        if not detector.face_available:
+            logger.warning("⚠️ InsightFace não está disponível - detecções faciais podem falhar")
+        logger.info(f"📊 Status do detector: models_ready={detector.models_ready}, yolo={detector.yolo_available}, face={detector.face_available}")
+    
+    return stats_data
 
 @app.get("/performance")
 async def get_performance():
@@ -600,14 +629,26 @@ async def export_log(current_user: str = Depends(get_current_user)):
 async def health():
     """Health check ultra-rápido."""
     global detector, camera_config
+    
+    detector_info = {}
+    if detector:
+        detector_info = {
+            "running": detector.running,
+            "prev_count": detector.prev_count,
+            "total_passed": detector.total_passed,
+            "current_fps": detector.current_fps,
+            "person_tracking": detector.person_tracking
+        }
+    
     return {
         "status": "healthy",
         "detector": "ready" if detector else "loading",
+        "detector_info": detector_info,
         "camera": {
             "current_source": "webcam" if camera_config["current_source"] == 0 else "ip_camera",
             "stream_enabled": camera_config["stream_enabled"]
         },
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": brasilia_now().isoformat()
     }
 
 # Endpoints de autenticação e logs
@@ -627,21 +668,32 @@ async def register(data: RegisterModel):
         "username": data.username,
         "email": data.email,
         "password": hashed,
-        "created_at": datetime.utcnow()
+        "created_at": brasilia_now()
     })
     return {"msg": "Registrado com sucesso"}
 
 @app.post("/login", response_model=Token)
 async def login(data: LoginModel):
-    """Autentica um usuário."""
-    user = await users_collection.find_one({"username": data.username})
+    """Autentica um usuário com username ou email."""
+    # Verifica se é email ou username
+    is_email = "@" in data.username
+    
+    if is_email:
+        # Busca por email
+        user = await users_collection.find_one({"email": data.username})
+    else:
+        # Busca por username
+        user = await users_collection.find_one({"username": data.username})
+    
     if not user or not verify_password(data.password, user["password"]):
         raise HTTPException(401, "Credenciais inválidas")
-    # Gera token JWT
-    to_encode = {"sub": data.username}
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    # Gera token JWT usando o username real
+    to_encode = {"sub": user["username"]}
+    expire = brasilia_now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     access_token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
     # devolve também o email e id
     return {
       "access_token": access_token,
@@ -661,7 +713,7 @@ async def create_log(
 ):
     """Cria um novo log de detecção."""
     payload = data.dict()
-    payload["created_at"] = datetime.utcnow()
+    payload["created_at"] = brasilia_now()
     payload["user"] = current_user
     await logs_collection.insert_one(payload)
     return {"msg": "Log registrado"}

@@ -19,6 +19,7 @@ bcrypt>=3.1.7
 motor>=3.3.0
 python-dotenv>=1.0.0
 python-jose[cryptography]>=3.3.0
+email-validator>=2.0.0
 
 # HTTP client para envio de logs
 httpx>=0.24.0
