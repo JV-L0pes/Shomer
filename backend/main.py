@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 
 # Carrega variáveis de ambiente
-load_dotenv('.env')  # carrega do arquivo .env
+load_dotenv(".env")  # carrega do arquivo .env
 import cv2
 import csv
 import io
@@ -16,9 +16,11 @@ from fastapi import FastAPI, Response, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, validator
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+import time
+from collections import defaultdict
 
 from detection import OptimizedDetector
 from config import Config, brasilia_now
@@ -53,7 +55,13 @@ app = FastAPI(
 # Configuração de autenticação
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# CORS otimizado
+# Rate limiting simples
+request_counts = defaultdict(list)
+RATE_LIMIT_WINDOW = 60  # 60 segundos
+RATE_LIMIT_MAX_REQUESTS = 100  # 100 requests por minuto
+LOGIN_RATE_LIMIT_MAX = 5  # 5 tentativas de login por minuto
+
+# CORS otimizado - Apenas origens específicas
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -63,7 +71,6 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
-        "*",  # Permitir tudo em desenvolvimento
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -72,14 +79,41 @@ app.add_middleware(
 )
 
 
-# Middleware personalizado para garantir CORS
+# Middleware personalizado para rate limiting e headers de segurança
 @app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
+async def security_middleware(request: Request, call_next):
+    # Rate limiting
+    client_ip = request.client.host
+    current_time = time.time()
+
+    # Limpar requests antigos
+    request_counts[client_ip] = [
+        req_time
+        for req_time in request_counts[client_ip]
+        if current_time - req_time < RATE_LIMIT_WINDOW
+    ]
+
+    # Verificar limite
+    if len(request_counts[client_ip]) >= RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+    # Adicionar request atual
+    request_counts[client_ip].append(current_time)
+
     response = await call_next(request)
+
+    # Headers de segurança
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+    )
 
     # Adicionar headers CORS se não estiverem presentes
     if "Access-Control-Allow-Origin" not in response.headers:
-        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Origin"] = "http://localhost:5173"
     if "Access-Control-Allow-Methods" not in response.headers:
         response.headers["Access-Control-Allow-Methods"] = (
             "GET, POST, PUT, DELETE, OPTIONS"
@@ -111,13 +145,34 @@ frame_cache = {
 # Modelos Pydantic para autenticação e logs
 class RegisterModel(BaseModel):
     username: str = Field(
-        ..., min_length=3, description="Nome de usuário com mínimo 3 caracteres"
+        ..., min_length=3, description="Nome completo com sobrenome (ex: João Silva)"
     )
     email: EmailStr = Field(..., description="Email válido")
     password: str = Field(
         ..., min_length=6, description="Senha com mínimo 6 caracteres"
     )
     invitationToken: str = Field(..., description="Token de convite válido")
+    
+    @validator('username')
+    def validate_full_name(cls, v):
+        if not v or len(v.strip()) < 3:
+            raise ValueError('Nome deve ter pelo menos 3 caracteres')
+        
+        # Verificar se tem pelo menos um espaço (nome + sobrenome)
+        if ' ' not in v.strip():
+            raise ValueError('Nome deve incluir sobrenome (ex: João Silva)')
+        
+        # Verificar se não tem espaços múltiplos ou no início/fim
+        parts = v.strip().split()
+        if len(parts) < 2:
+            raise ValueError('Nome deve incluir sobrenome (ex: João Silva)')
+        
+        # Verificar se cada parte tem pelo menos 2 caracteres
+        for part in parts:
+            if len(part) < 2:
+                raise ValueError('Cada parte do nome deve ter pelo menos 2 caracteres')
+        
+        return v.strip()
 
 
 class LoginModel(BaseModel):
@@ -810,8 +865,25 @@ async def register(data: RegisterModel):
 
 
 @app.post("/login", response_model=Token)
-async def login(data: LoginModel):
+async def login(data: LoginModel, request: Request):
     """Autentica um usuário com username ou email."""
+    # Rate limiting específico para login
+    client_ip = request.client.host
+    current_time = time.time()
+
+    # Limpar tentativas antigas
+    login_attempts = [
+        attempt_time
+        for attempt_time in request_counts.get(f"login_{client_ip}", [])
+        if current_time - attempt_time < RATE_LIMIT_WINDOW
+    ]
+
+    # Verificar limite de tentativas de login
+    if len(login_attempts) >= LOGIN_RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=429, detail="Too many login attempts. Try again later."
+        )
+
     # Verifica se é email ou username
     is_email = "@" in data.username
 
@@ -823,6 +895,10 @@ async def login(data: LoginModel):
         user = await users_collection.find_one({"username": data.username})
 
     if not user or not verify_password(data.password, user["password"]):
+        # Adicionar tentativa falhada
+        if f"login_{client_ip}" not in request_counts:
+            request_counts[f"login_{client_ip}"] = []
+        request_counts[f"login_{client_ip}"].append(current_time)
         raise HTTPException(401, "Credenciais inválidas")
 
     # Gera token JWT usando o username real

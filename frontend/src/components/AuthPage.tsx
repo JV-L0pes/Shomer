@@ -64,7 +64,15 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
     switch (field) {
       case "username":
         if (!value) return "Usuário ou email é obrigatório";
-        if (!isLogin && value.length < 3) return "Mínimo 3 caracteres";
+        if (!isLogin) {
+          if (value.length < 3) return "Nome deve ter pelo menos 3 caracteres";
+          if (!value.includes(' ')) return "Nome deve incluir sobrenome (ex: João Silva)";
+          const parts = value.trim().split(' ');
+          if (parts.length < 2) return "Nome deve incluir sobrenome (ex: João Silva)";
+          for (const part of parts) {
+            if (part.length < 2) return "Cada parte do nome deve ter pelo menos 2 caracteres";
+          }
+        }
         return "";
       case "email":
         if (!value) return "Email é obrigatório";

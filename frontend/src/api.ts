@@ -14,7 +14,8 @@ const api = axios.create({
 // Interceptor para adicionar token JWT automaticamente
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("authToken");
+    // Usar apenas cookie para maior segurança
+    const token = getCookie("authToken");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -24,6 +25,14 @@ api.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+
+// Função para pegar cookie
+function getCookie(name: string): string | null {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(";").shift() || null;
+  return null;
+}
 
 export interface Stats {
   current: number;
@@ -410,8 +419,12 @@ export async function loginApi(payload: {
   });
   if (!res.ok) throw await res.json();
   const data = await res.json();
-  // salva token
-  localStorage.setItem("authToken", data.access_token);
+
+  // Salva token apenas em cookie (mais seguro)
+  document.cookie = `authToken=${data.access_token}; path=/; max-age=${
+    30 * 60
+  }; SameSite=Strict`;
+
   // salva user no sessionStorage
   sessionStorage.setItem("shomer_user", JSON.stringify(data.user));
   return data;
@@ -436,4 +449,14 @@ export async function registerApi(payload: RegisterPayload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw await res.json();
+}
+
+// Função para logout seguro
+export function logout() {
+  // Remove token do cookie
+  document.cookie =
+    "authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+
+  // Remove dados do usuário
+  sessionStorage.removeItem("shomer_user");
 }
