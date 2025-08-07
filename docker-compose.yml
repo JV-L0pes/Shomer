@@ -1,0 +1,59 @@
+services:
+  mongo:
+    build:
+      context: ./mongo-init
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
+      MONGO_APP_USER: ${MONGO_APP_USER:-shomer_user}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:-shomer_pass_123}
+    networks:
+      - app_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - YOLO_MODEL=${YOLO_MODEL}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s      # roda a cada 10 segundos
+      timeout: 5s        # falha se demorar mais de 5 segundos
+      retries: 3         # precisa de 3 sucessos seguidos
+      start_period: 5s
+    networks:
+      - app_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - app_net
+
+volumes:
+  mongo_data:
+
+networks:
+  app_net:
+    driver: bridge

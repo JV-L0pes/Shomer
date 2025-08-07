@@ -1,0 +1,28 @@
+# Web framework
+fastapi==0.95.0
+uvicorn[standard]==0.22.0
+
+# Visão computacional & modelos
+opencv-python>=4.12.0
+torch>=2.0.1
+ultralytics>=8.3.0
+mediapipe>=0.10.4
+insightface>=0.7.3
+onnxruntime>=1.13.1
+
+# (Opcional) Se você usar leitura de arquivos, logs etc.
+python-multipart>=0.0.6
+
+# Autenticação e banco de dados
+passlib[bcrypt]
+bcrypt>=3.1.7
+motor>=3.3.0
+python-dotenv>=1.0.0
+python-jose[cryptography]>=3.3.0
+email-validator>=2.0.0
+
+# HTTP client para envio de logs
+httpx>=0.24.0
+
+# Interface gráfica
+PyQt5>=5.15.0
