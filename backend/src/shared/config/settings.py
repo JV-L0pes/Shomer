@@ -37,7 +37,7 @@ class Config:
     )
 
     # Configurações do Banco de Dados
-    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://mongo:27017/shomerdb?authSource=admin")
+    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://shomer_user:shomer_pass_123@mongo:27017/shomerdb?authSource=shomerdb")
 
     @classmethod
     def get_camera_config(cls) -> Dict[str, Any]:

@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Tuple
 from collections import deque
 import queue
-from config import brasilia_now
+from src.shared.config import brasilia_now
 
 # Configurações ultra-otimizadas
 YOLO_MODEL = "yolov8n.pt"
