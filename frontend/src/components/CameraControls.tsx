@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Camera, Video, VideoOff, Wifi, Monitor, Loader2 } from "lucide-react";
-import { useCameraControl } from "../api";
+import { useCameraControl, updateIPCamera } from "../api";
+import { Globe, Save } from "lucide-react";
 
 interface Props {
   className?: string;
@@ -18,6 +19,8 @@ export default function CameraControls({ className = "" }: Props) {
   } = useCameraControl();
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [ipUrl, setIpUrl] = useState<string>("");
+  const [ipSaveMsg, setIpSaveMsg] = useState<string | null>(null);
 
   // Atualizar status automaticamente a cada 3 segundos
   useEffect(() => {
@@ -27,6 +30,10 @@ export default function CameraControls({ className = "" }: Props) {
 
     return () => clearInterval(interval);
   }, [refreshStatus]);
+
+  useEffect(() => {
+    if (cameraStatus?.ip_url) setIpUrl(cameraStatus.ip_url);
+  }, [cameraStatus]);
 
   const handleCameraSwitch = async (source: string) => {
     setSwitchError(null);
@@ -59,6 +66,49 @@ export default function CameraControls({ className = "" }: Props) {
         `Erro ao ${
           cameraStatus?.stream_enabled ? "parar" : "iniciar"
         } stream: ${
+          error instanceof Error ? error.message : "Erro desconhecido"
+        }`
+      );
+    }
+  };
+
+  const normalizeUrl = (raw: string) => {
+    let url = (raw || "").trim();
+    if (!url) return url;
+    if (!/^https?:\/\//i.test(url)) {
+      url = `http://${url}`;
+    }
+    try {
+      const u = new URL(url);
+      if (!u.pathname || u.pathname === "/") {
+        u.pathname = "/video";
+      }
+      return u.toString();
+    } catch {
+      // fallback simples
+      if (url.endsWith("/")) return url + "video";
+      if (!url.split("://")[1].includes("/")) return url + "/video";
+      return url;
+    }
+  };
+
+  const handleSaveIP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIpSaveMsg(null);
+    try {
+      const normalized = normalizeUrl(ipUrl);
+      if (!normalized) {
+        setIpSaveMsg("Informe uma URL válida");
+        return;
+      }
+      await updateIPCamera({ ip_url: normalized });
+      setIpSaveMsg("URL salva. Você pode alternar para IP Camera.");
+      setTimeout(() => setIpSaveMsg(null), 3000);
+      // Atualiza status
+      setTimeout(() => refreshStatus(), 500);
+    } catch (error) {
+      setIpSaveMsg(
+        `Falha ao salvar URL: ${
           error instanceof Error ? error.message : "Erro desconhecido"
         }`
       );
@@ -168,6 +218,34 @@ export default function CameraControls({ className = "" }: Props) {
             )}
           </button>
         </div>
+      </div>
+
+      {/* Campo para URL da IP Camera */}
+      <div className="mb-6">
+        <h4 className="text-sm font-medium text-gray-300 mb-3">URL da IP Camera</h4>
+        <form onSubmit={handleSaveIP} className="space-y-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={ipUrl}
+                onChange={(e) => setIpUrl(e.target.value)}
+                placeholder="http://SEU_IP:PORT/video (ex: http://192.168.15.7:4747/video)"
+                className="w-full bg-gray-800/60 border border-gray-700/60 rounded-lg px-10 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <Globe className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" /> Salvar
+            </button>
+          </div>
+          {ipSaveMsg && (
+            <div className="text-xs text-blue-300">{ipSaveMsg}</div>
+          )}
+        </form>
       </div>
 
       {/* Botão de Controle de Stream */}

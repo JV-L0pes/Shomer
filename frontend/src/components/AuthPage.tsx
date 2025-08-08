@@ -161,22 +161,16 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
       }
       navigate("/demo");
     } catch (err: any) {
-      // Ignorar erro
       let errorMessage = "Erro interno. Tente novamente.";
-
-      if (err.detail) {
-        errorMessage = Array.isArray(err.detail)
-          ? err.detail.map((e: any) => e.msg || e.message).join(", ")
-          : err.detail;
-      } else if (err.msg) {
-        errorMessage = err.msg;
-      } else if (err.message) {
+      if (err?.response?.data?.detail) {
+        const d = err.response.data.detail;
+        errorMessage = Array.isArray(d)
+          ? d.map((e: any) => e.msg || e.message || String(e)).join(", ")
+          : d;
+      } else if (err?.message) {
         errorMessage = err.message;
       }
-
-      setErrors({
-        general: errorMessage,
-      });
+      setErrors({ general: errorMessage });
     } finally {
       setIsLoading(false);
     }

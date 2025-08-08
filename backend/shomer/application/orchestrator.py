@@ -24,10 +24,7 @@ async def send_log(count: int, details: dict = None):
         "details": details or {},
     }
     async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "http://localhost:8000/logs",  # ou "http://mongo-network-alias:8000" no Compose
-            json=payload,
-        )
+        resp = await client.post("http://localhost:8000/logs", json=payload)
         resp.raise_for_status()
 
 

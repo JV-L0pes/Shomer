@@ -10,6 +10,11 @@ from collections import deque
 import queue
 from src.shared.config import brasilia_now
 
+try:
+    import torch  # type: ignore
+except Exception:  # torch é opcional no runtime CPU
+    torch = None
+
 # Configurações ultra-otimizadas
 YOLO_MODEL = "yolov8n.pt"
 CONF_THRESHOLD = 0.5
@@ -83,6 +88,12 @@ class VisualDetector:
         # Lock para resultados de detecção
         self.detection_lock = threading.Lock()
 
+        # Otimizações gerais do OpenCV
+        try:
+            cv2.setUseOptimized(True)
+        except Exception:
+            pass
+
         # Configuração da câmera ultra-otimizada
         self._setup_camera(src)
 
@@ -98,51 +109,97 @@ class VisualDetector:
         self._start_threads()
 
     def _setup_camera(self, src):
-        """Configuração ultra-otimizada da câmera."""
+        """Configuração ultra-otimizada da câmera.
 
-        # Tentar backends otimizados
-        backends = [
-            (cv2.CAP_DSHOW, "DirectShow"),
-            (cv2.CAP_MSMF, "Media Foundation"),
-        ]
+        - Para índices numéricos (webcam), tenta DirectShow/MSMF (Windows).
+        - Para URLs (HTTP/RTSP), tenta FFMPEG primeiro e cai no default se necessário.
+        """
 
         self.cap = None
-        for backend, name in backends:
+
+        # Se for string/URL (IP camera)
+        is_numeric_source = isinstance(src, int) or (isinstance(src, str) and src.isdigit())
+
+        if not is_numeric_source:
+            # Fonte IP: priorizar backend FFMPEG
             try:
-                cap = cv2.VideoCapture(src, backend)
+                cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
                 if cap.isOpened():
                     ret, frame = cap.read()
                     if ret and frame is not None:
                         self.cap = cap
-                        break
+                if not self.cap:
                     cap.release()
-            except Exception as e:
+            except Exception:
                 pass
 
+            # Fallback para backend default
+            if not self.cap:
+                try:
+                    cap = cv2.VideoCapture(src)
+                    if cap.isOpened():
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            self.cap = cap
+                        else:
+                            cap.release()
+                except Exception:
+                    pass
+        else:
+            # Webcam local (índice numérico)
+            backends = [
+                (cv2.CAP_DSHOW, "DirectShow"),
+                (cv2.CAP_MSMF, "Media Foundation"),
+            ]
+
+            for backend, _ in backends:
+                try:
+                    cap = cv2.VideoCapture(src, backend)
+                    if cap.isOpened():
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            self.cap = cap
+                            break
+                        cap.release()
+                except Exception:
+                    pass
+
         if not self.cap:
+            # Sem câmera válida, usar gerador de frames de teste
             self.use_fake_camera = True
             return
 
         self.use_fake_camera = False
 
-        # Configurações ultra-otimizadas
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Buffer mínimo
-        self.cap.set(cv2.CAP_PROP_FPS, TARGET_FPS)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Configurações comuns
+        try:
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Buffer mínimo
+        except Exception:
+            pass
 
-        # Configurações adicionais para performance máxima
-        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc("M", "J", "P", "G"))
-        self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # Desabilitar autofoco
-        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Exposição manual
-        self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 128)  # Brilho fixo
-        self.cap.set(cv2.CAP_PROP_CONTRAST, 128)  # Contraste fixo
-        self.cap.set(cv2.CAP_PROP_SATURATION, 128)  # Saturação fixa
-        self.cap.set(cv2.CAP_PROP_HUE, 0)  # Matiz fixo
+        # Ajustes só para webcam local (tendem a falhar em streams IP)
+        if is_numeric_source:
+            try:
+                self.cap.set(cv2.CAP_PROP_FPS, TARGET_FPS)
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                self.cap.set(
+                    cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc("M", "J", "P", "G")
+                )
+                self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+                self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 128)
+                self.cap.set(cv2.CAP_PROP_CONTRAST, 128)
+                self.cap.set(cv2.CAP_PROP_SATURATION, 128)
+                self.cap.set(cv2.CAP_PROP_HUE, 0)
+            except Exception:
+                pass
 
     def _setup_models(self):
         """Configuração dos modelos com feedback."""
         self.models_ready = False
+        self.device = "cpu"
+        self.use_half = False
 
         try:
 
@@ -151,12 +208,36 @@ class VisualDetector:
                 from ultralytics import YOLO
 
                 self.person_model = YOLO(YOLO_MODEL)
-                self.person_model.fuse()
+                # Selecionar dispositivo
+                if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
+                    # Habilitar heurísticas do cuDNN para entradas estáveis
+                    try:
+                        torch.backends.cudnn.benchmark = True  # type: ignore
+                    except Exception:
+                        pass
+                    self.device = "cuda:0"
+                    # mover pesos para GPU
+                    try:
+                        self.person_model.to(self.device)
+                        # half precision quando possível (RTX 30xx)
+                        self.use_half = True
+                    except Exception:
+                        self.use_half = False
+                # fundir camadas para inferência mais rápida
+                try:
+                    self.person_model.fuse()
+                except Exception:
+                    pass
 
                 # Warmup com frame menor para velocidade
                 dummy = np.zeros((320, 320, 3), dtype=np.uint8)
                 _ = self.person_model(
-                    dummy, conf=CONF_THRESHOLD, classes=[0], verbose=False
+                    dummy,
+                    conf=CONF_THRESHOLD,
+                    classes=[0],
+                    verbose=False,
+                    device=self.device,
+                    half=self.use_half,
                 )
 
                 self.yolo_available = True
@@ -169,9 +250,11 @@ class VisualDetector:
                 from insightface.app import FaceAnalysis
 
                 self.face_analyzer = FaceAnalysis(allowed_modules=["detection"])
+                # Selecionar GPU se disponível (ctx_id>=0)
+                ctx = 0 if self.device.startswith("cuda") else -1
                 self.face_analyzer.prepare(
-                    ctx_id=-1, det_size=(320, 320)
-                )  # Tamanho menor
+                    ctx_id=ctx, det_size=(320, 320)
+                )
 
                 # Warmup
                 _ = self.face_analyzer.get(dummy)
@@ -214,6 +297,8 @@ class VisualDetector:
                 else:
                     ret, frame = self.cap.read()
                     if not ret or frame is None:
+                        # evitar busy-wait quando frame falha
+                        time.sleep(0.002)
                         continue
 
                 # Buffer ultra-otimizado - sempre substituir frame mais recente
@@ -303,12 +388,23 @@ class VisualDetector:
                 scale_back = 1.0
 
             # Inferência ultra-otimizada
-            results = self.person_model(
-                detection_frame,
-                conf=CONF_THRESHOLD,
-                classes=[0],  # Pessoas
-                verbose=False,
-            )[0]
+            if torch is not None:
+                with torch.inference_mode():  # type: ignore
+                    results = self.person_model(
+                        detection_frame,
+                        conf=CONF_THRESHOLD,
+                        classes=[0],  # Pessoas
+                        verbose=False,
+                        device=self.device,
+                        half=self.use_half,
+                    )[0]
+            else:
+                results = self.person_model(
+                    detection_frame,
+                    conf=CONF_THRESHOLD,
+                    classes=[0],
+                    verbose=False,
+                )[0]
 
             boxes = []
             if results.boxes is not None:

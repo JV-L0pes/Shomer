@@ -7,7 +7,8 @@ class Config:
     @staticmethod
     def load():
         return {
-            "ip_url": "http://192.168.15.5:4747/video",
+            # Sem default; a URL virá via API moderna
+            "ip_url": os.getenv("DEFAULT_IP_CAMERA_URL", ""),
             "yolo_model": os.getenv("YOLO_MODEL", "yolov8n.pt"),
             "conf_threshold": float(os.getenv("CONF_THRESHOLD", "0.5")),
             "window_title": os.getenv("WINDOW_TITLE", "Shomer - Real-time"),

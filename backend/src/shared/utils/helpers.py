@@ -3,7 +3,9 @@ import io
 from datetime import datetime
 from typing import List
 from ..config import brasilia_now
-from ...infrastructure.repositories.mongo_repository import get_logs_collection
+from sqlalchemy import select, desc
+from ...infrastructure.repositories.postgres_repository import get_session
+from ...infrastructure.repositories.postgres_models import LogModel
 
 
 def export_log_csv(detector, current_user: str):
@@ -51,14 +53,22 @@ def export_log_csv(detector, current_user: str):
 
 
 async def get_logs_list(limit: int = 100) -> List[dict]:
-    """
-    Retorna os últimos `limit` logs, em ordem decrescente de timestamp.
-    """
-    cursor = get_logs_collection().find().sort("timestamp", -1).limit(limit)
-    results = []
-    async for doc in cursor:
-        results.append(doc)
-    return results
+    """Retorna os últimos `limit` logs (PostgreSQL)."""
+    async for session in get_session():
+        stmt = select(LogModel).order_by(desc(LogModel.timestamp)).limit(limit)
+        res = await session.execute(stmt)
+        rows = res.scalars().all()
+        return [
+            {
+                "id": r.id,
+                "timestamp": r.timestamp,
+                "count": r.count,
+                "details": r.details,
+                "created_at": r.created_at,
+                "user": r.user,
+            }
+            for r in rows
+        ]
 
 
 def get_detector_stats(detector, camera_config):

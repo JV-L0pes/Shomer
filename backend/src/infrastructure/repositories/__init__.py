@@ -1,4 +1,4 @@
-from .mongo_user_repository import MongoUserRepository
-from .mongo_log_repository import MongoLogRepository
+from .postgres_user_repository import PostgresUserRepository
+from .postgres_log_repository import PostgresLogRepository
 
-__all__ = ['MongoUserRepository', 'MongoLogRepository']
+__all__ = ['PostgresUserRepository', 'PostgresLogRepository']

@@ -15,7 +15,8 @@ class Config:
     # Configurações de Câmera
     CAMERA_SOURCES = {
         "webcam": 0,
-        "ip_camera": "http://192.168.15.5:4747/video",  # DroidCam padrão
+        # Sem IP padrão: o usuário deve salvar via /camera/ip
+        "ip_camera": "",
     }
 
     # Configurações de Detecção
@@ -36,14 +37,18 @@ class Config:
         os.getenv("STREAM_ENABLED_BY_DEFAULT", "true").lower() == "true"
     )
 
-    # Configurações do Banco de Dados
-    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://shomer_user:shomer_pass_123@mongo:27017/shomerdb?authSource=shomerdb")
+    # Configurações do Banco de Dados (PostgreSQL)
+    DATABASE_URL = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://shomer_user:shomer_pass_123@localhost:5432/shomerdb",
+    )
 
     @classmethod
     def get_camera_config(cls) -> Dict[str, Any]:
         """Retorna configurações de câmera."""
         return {
             "current_source": cls.CAMERA_SOURCES["webcam"],  # Começa com webcam
+            # ip_url inicial pode vir de env; será atualizado via /camera/ip
             "ip_url": cls.CAMERA_SOURCES["ip_camera"],
             "stream_enabled": cls.STREAM_ENABLED_BY_DEFAULT,
             "available_sources": cls.CAMERA_SOURCES,
@@ -68,11 +73,11 @@ class Config:
     @classmethod
     def get_database_config(cls) -> Dict[str, Any]:
         """Retorna configurações do banco de dados."""
-        return {"mongodb_uri": cls.MONGODB_URI}
+        return {"database_url": cls.DATABASE_URL}
 
     @classmethod
     def update_ip_camera_url(cls, url: str) -> None:
-        """Atualiza a URL da IP camera."""
+        """Atualiza a URL da IP camera e mantém coerência em helpers."""
         cls.CAMERA_SOURCES["ip_camera"] = url
 
     @classmethod

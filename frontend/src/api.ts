@@ -3,7 +3,7 @@ import axios from "axios";
 
 // Configurar axios com otimizações
 const api = axios.create({
-  baseURL: "http://localhost:8000", // Corrigido para porta 8000
+  baseURL: (import.meta as any).env?.VITE_API_URL || "http://localhost:8000",
   timeout: 15000, // Aumentado para 15 segundos
   headers: {
     "Cache-Control": "no-cache",
@@ -105,6 +105,16 @@ export interface StreamControlResponse {
   success: boolean;
   message: string;
   stream_enabled: boolean;
+  current_source: string;
+}
+
+export interface UpdateIPPayload {
+  ip_url: string;
+}
+
+export interface UpdateIPResponse {
+  success: boolean;
+  ip_url: string;
   current_source: string;
 }
 
@@ -240,6 +250,14 @@ export async function controlStream(
       `Falha ao ${action === "start" ? "iniciar" : "parar"} stream`
     );
   }
+}
+
+// Atualiza URL da câmera IP
+export async function updateIPCamera(
+  payload: UpdateIPPayload
+): Promise<UpdateIPResponse> {
+  const response = await api.post<UpdateIPResponse>("/camera/ip", payload);
+  return response.data;
 }
 
 /**
@@ -407,25 +425,15 @@ export interface AuthResponse {
 }
 
 // Funções de autenticação
-export async function loginApi(payload: {
-  username: string;
-  password: string;
-}) {
-  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-  const res = await fetch(`${apiUrl}/login`, {
-    method: "POST",
+export async function loginApi(payload: { username: string; password: string }) {
+  const { data } = await api.post("/login", payload, {
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await res.json();
-  const data = await res.json();
 
-  // Salva token apenas em cookie (mais seguro)
-  document.cookie = `authToken=${data.access_token}; path=/; max-age=${
-    30 * 60
-  }; SameSite=Strict`;
+  // Salva token em cookie
+  document.cookie = `authToken=${data.access_token}; path=/; max-age=${30 * 60}; SameSite=Strict`;
 
-  // salva user no sessionStorage
+  // Salva user no sessionStorage
   sessionStorage.setItem("shomer_user", JSON.stringify(data.user));
   return data;
 }
@@ -442,13 +450,10 @@ export function getUserFromToken(token: string): { username: string } {
 }
 
 export async function registerApi(payload: RegisterPayload) {
-  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-  const res = await fetch(`${apiUrl}/register`, {
-    method: "POST",
+  const { data } = await api.post("/register", payload, {
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await res.json();
+  return data;
 }
 
 // Função para logout seguro

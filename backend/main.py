@@ -15,6 +15,8 @@ from src.infrastructure.controllers import api_router
 from src.infrastructure.middleware import setup_cors, security_middleware
 from src.shared.config import Config
 from detection import VisualDetector
+from src.infrastructure.repositories.postgres_repository import engine
+from src.infrastructure.repositories.postgres_models import Base
 
 # Configuração de logging otimizada
 logging.basicConfig(level=logging.WARNING)  # Menos logs = mais performance
@@ -48,13 +50,20 @@ async def startup_event():
     """Inicialização ultra-otimizada."""
     global detector
     try:
-        detector = VisualDetector(src=camera_config["current_source"])
+        # Garantir que as rotas tenham acesso ao camera_config desde o início
+        from src.infrastructure.controllers.api_controller import set_globals
+        set_globals(detector, camera_config)
 
+        # Criar schema no Postgres (equivalente simples a migrations iniciais)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        detector = VisualDetector(src=camera_config["current_source"])
+        
         # Aguardar inicialização completa
         await asyncio.sleep(1.5)  # Reduzido para inicialização mais rápida
         
-        # Configurar variáveis globais no controller
-        from src.infrastructure.controllers.api_controller import set_globals
+        # Atualizar variáveis globais no controller com detector pronto
         set_globals(detector, camera_config)
         
     except Exception as e:

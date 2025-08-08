@@ -22,6 +22,11 @@ function VideoStream({ src }: Props) {
   const [connectionStatus, setConnectionStatus] = useState<
     "connecting" | "connected" | "error" | "waiting"
   >("connecting");
+  const [currentSource, setCurrentSource] = useState<"webcam" | "ip_camera">(
+    "webcam"
+  );
+  const [ipUrl, setIpUrl] = useState<string>("");
+  const [cacheBuster, setCacheBuster] = useState<number>(Date.now());
   const [streamStats, setStreamStats] = useState<StreamStats>({
     fps: 0,
     frameCount: 0,
@@ -76,13 +81,22 @@ function VideoStream({ src }: Props) {
   // Função para verificar status do stream
   const checkStreamStatus = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:8000/camera/status");
+      const apiBase = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
+      const response = await fetch(`${apiBase}/camera/status`);
       if (response.ok) {
         const data = await response.json();
         if (data.stream_enabled) {
           setConnectionStatus("connected");
         } else {
           setConnectionStatus("waiting");
+        }
+        if (data.current_source === "ip_camera") {
+          setCurrentSource("ip_camera");
+        } else {
+          setCurrentSource("webcam");
+        }
+        if (typeof data.ip_url === "string") {
+          setIpUrl(data.ip_url);
         }
       }
     } catch (error) {
@@ -119,8 +133,10 @@ function VideoStream({ src }: Props) {
       // Ignorar erro
     };
 
-    // Configurar para stream MJPEG contínuo
-    img.src = src;
+    // Configurar para stream MJPEG contínuo (força reconexão com cache-buster)
+    const url = new URL(src);
+    url.searchParams.set("cb", String(cacheBuster));
+    img.src = url.toString();
 
     // Event listeners otimizados
     img.addEventListener("load", handleLoad, { passive: true });
@@ -137,7 +153,7 @@ function VideoStream({ src }: Props) {
         clearInterval(statusCheckRef.current);
       }
     };
-  }, [src, updateStats, checkStreamStatus]);
+  }, [src, updateStats, checkStreamStatus, cacheBuster]);
 
   // Função para retry manual
   const handleRetry = useCallback(() => {
@@ -149,9 +165,14 @@ function VideoStream({ src }: Props) {
 
     const img = imgRef.current;
     if (img) {
-      img.src = src;
+      setCacheBuster(Date.now());
     }
   }, [src]);
+
+  // Quando a fonte atual muda, força reconexão do <img>
+  useEffect(() => {
+    setCacheBuster(Date.now());
+  }, [currentSource, ipUrl]);
 
   // Função para formatar bytes
   const formatBytes = (bytes: number) => {
@@ -268,6 +289,25 @@ function VideoStream({ src }: Props) {
         decoding="async"
         crossOrigin="anonymous" // Para CORS se necessário
       />
+
+      {/* Badge de fonte atual */}
+      <div className="absolute top-3 left-3 z-40">
+        <div className="px-3 py-1 rounded-full bg-black/60 border border-white/10 backdrop-blur text-xs text-white flex items-center gap-2">
+          {currentSource === "ip_camera" ? (
+            <Wifi className="w-3 h-3" />
+          ) : (
+            <Camera className="w-3 h-3" />
+          )}
+          <span>
+            {currentSource === "ip_camera" ? "IP Camera" : "Webcam"}
+          </span>
+          {currentSource === "ip_camera" && ipUrl && (
+            <span className="text-[10px] text-gray-300 max-w-[240px] truncate">
+              {ipUrl}
+            </span>
+          )}
+        </div>
+      </div>
     </motion.div>
   );
 }

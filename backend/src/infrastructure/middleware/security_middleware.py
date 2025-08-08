@@ -1,5 +1,6 @@
 import time
 from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from ..services import check_rate_limit
 
@@ -27,14 +28,53 @@ def setup_cors(app):
 
 async def security_middleware(request: Request, call_next):
     """Middleware personalizado para rate limiting e headers de segurança."""
+    # Endpoints com polling frequente não devem entrar no rate limit global
+    EXEMPT_RATE_LIMIT_PREFIXES = (
+        "/stats",
+        "/performance",
+        "/camera/status",
+        "/health",
+        "/stream",
+    )
+    # Responder pré-flight CORS rapidamente
+    if request.method == "OPTIONS":
+        response = Response(status_code=204)
+        origin = request.headers.get("origin", "http://localhost:3000")
+        req_headers = request.headers.get("access-control-request-headers", "*")
+        req_method = request.headers.get("access-control-request-method", "*")
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = req_method or "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = req_headers or "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
     # Rate limiting
     client_ip = request.client.host
     current_time = time.time()
 
-    # Verificar rate limit
-    check_rate_limit(client_ip, current_time)
-
-    response = await call_next(request)
+    try:
+        # Verificar rate limit se não for caminho isento (prefix match)
+        if not any(request.url.path.startswith(p) for p in EXEMPT_RATE_LIMIT_PREFIXES):
+            check_rate_limit(client_ip, current_time)
+        response = await call_next(request)
+    except HTTPException as http_exc:
+        # Garantir headers CORS também em respostas de erro
+        origin = request.headers.get("origin", "http://localhost:3000")
+        response = JSONResponse(
+            {"detail": http_exc.detail}, status_code=http_exc.status_code
+        )
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+    except Exception:
+        origin = request.headers.get("origin", "http://localhost:3000")
+        response = JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
 
     # Headers de segurança
     response.headers["X-Frame-Options"] = "DENY"
@@ -47,7 +87,8 @@ async def security_middleware(request: Request, call_next):
 
     # Adicionar headers CORS se não estiverem presentes
     if "Access-Control-Allow-Origin" not in response.headers:
-        response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+        origin = request.headers.get("origin", "http://localhost:3000")
+        response.headers["Access-Control-Allow-Origin"] = origin
     if "Access-Control-Allow-Methods" not in response.headers:
         response.headers["Access-Control-Allow-Methods"] = (
             "GET, POST, PUT, DELETE, OPTIONS"

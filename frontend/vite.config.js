@@ -13,7 +13,7 @@ export default defineConfig({
     proxy: {
       // Stream de vídeo principal
       "/video_feed": {
-        target: "http://localhost:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
         secure: false,
         ws: false,
@@ -33,7 +33,7 @@ export default defineConfig({
 
       // Stream alternativo (imagem única)
       "/demo-stream.jpg": {
-        target: "http://localhost:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
         secure: false,
         timeout: 10000,
@@ -45,7 +45,7 @@ export default defineConfig({
 
       // API de estatísticas
       "/stats": {
-        target: "http://localhost:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
         secure: false,
         timeout: 5000,
@@ -56,7 +56,7 @@ export default defineConfig({
 
       // Export de logs
       "/export_log.csv": {
-        target: "http://localhost:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
         secure: false,
         timeout: 10000,
@@ -67,7 +67,7 @@ export default defineConfig({
 
       // Health check
       "/health": {
-        target: "http://localhost:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
         secure: false,
         timeout: 5000,
@@ -75,7 +75,7 @@ export default defineConfig({
 
       // Fallback para outras rotas da API
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
         secure: false,
         timeout: 10000,
@@ -108,10 +108,10 @@ export default defineConfig({
     host: true,
     port: 3000,
     proxy: {
-      "/video_feed": "http://localhost:8000",
-      "/demo-stream.jpg": "http://localhost:8000",
-      "/stats": "http://localhost:8000",
-      "/export_log.csv": "http://localhost:8000",
+      "/video_feed": "http://backend:8000",
+      "/demo-stream.jpg": "http://backend:8000",
+      "/stats": "http://backend:8000",
+      "/export_log.csv": "http://backend:8000",
     },
   },
 
@@ -130,6 +130,6 @@ export default defineConfig({
   // Define para desenvolvimento
   define: {
     __DEV__: JSON.stringify(true),
-    __API_URL__: JSON.stringify("http://localhost:8000"),
+    __API_URL__: JSON.stringify("http://backend:8000"),
   },
 });

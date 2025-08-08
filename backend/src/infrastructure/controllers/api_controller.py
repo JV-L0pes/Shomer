@@ -6,10 +6,11 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from jose import jwt
+import cv2
 
 from ...application.dto.models import RegisterModel, LoginModel, Token, LogModel, LogOutModel
 from ...application.use_cases import RegisterUserUseCase, LoginUserUseCase, CreateLogUseCase, GetLogsUseCase
-from ...infrastructure.repositories import MongoUserRepository, MongoLogRepository
+from ...infrastructure.repositories import PostgresUserRepository, PostgresLogRepository
 from ...infrastructure.services import JWTAuthService, get_current_user, check_login_rate_limit
 from ...shared.config import brasilia_now, Config
 from ...shared.utils import (
@@ -17,6 +18,7 @@ from ...shared.utils import (
     get_performance_stats, get_health_info
 )
 from detection import VisualDetector
+from pydantic import BaseModel
 
 # Router para organizar as rotas
 router = APIRouter()
@@ -30,8 +32,8 @@ camera_config = None
 
 # Instâncias dos serviços e repositórios
 auth_service = JWTAuthService()
-user_repository = MongoUserRepository()
-log_repository = MongoLogRepository()
+user_repository = PostgresUserRepository()
+log_repository = PostgresLogRepository()
 
 # Casos de uso
 register_use_case = RegisterUserUseCase(user_repository, auth_service)
@@ -46,6 +48,75 @@ def set_globals(detector_instance, camera_config_instance):
     detector = detector_instance
     camera_config = camera_config_instance
 
+
+def _probe_source(source) -> (bool, str):
+    """Tenta abrir a fonte de vídeo rapidamente para validar disponibilidade.
+    Retorna (ok, erro). Timeout curto para não travar API.
+    """
+    try:
+        # Selecionar backend conforme tipo de fonte
+        cap = None
+        if isinstance(source, int):
+            cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+        else:
+            # Pode ser string numérica representando webcam
+            if isinstance(source, str) and source.isdigit():
+                cap = cv2.VideoCapture(int(source), cv2.CAP_DSHOW)
+            else:
+                cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+
+        # Buffer mínimo e timeout de leitura
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+
+        start = time.time()
+        ok = False
+        while time.time() - start < 3.0:
+            ret, _ = cap.read()
+            if ret:
+                ok = True
+                break
+            time.sleep(0.1)
+        cap.release()
+        if ok:
+            return True, ""
+        return False, "Falha ao abrir/ler da fonte de vídeo"
+    except Exception as e:
+        try:
+            if cap:
+                cap.release()
+        except Exception:
+            pass
+        return False, str(e)
+
+
+def _normalize_ip_url(raw: str) -> str:
+    """Normaliza URL informada pelo usuário.
+    - Adiciona http:// se ausente
+    - Garante path (/video) se ausente (DroidCam)
+    - Remove espaços
+    """
+    url = (raw or "").strip()
+    if not url:
+        return url
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = f"http://{url}"
+    try:
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(url)
+        path = parsed.path or "/video"
+        if path == "/":
+            path = "/video"
+        parsed = parsed._replace(path=path)
+        return urlunparse(parsed)
+    except Exception:
+        if url.endswith("/"):
+            return url + "video"
+        if "/" not in url.split("://", 1)[1]:
+            return url + "/video"
+        return url
 
 @router.get("/")
 async def root():
@@ -75,6 +146,70 @@ async def root():
         }
 
     return base_info
+class UpdateIPPayload(BaseModel):
+    ip_url: str
+
+
+@router.post("/camera/ip")
+async def update_ip_camera(payload: UpdateIPPayload):
+    """Atualiza a URL da câmera IP e reinicia o detector se estiver usando IP."""
+    global detector
+    try:
+        from ...shared.config import Config
+
+        # Normalizar URL e atualizar config
+        normalized_url = _normalize_ip_url(payload.ip_url)
+        Config.update_ip_camera_url(normalized_url)
+        camera_config["ip_url"] = normalized_url
+        camera_config["available_sources"]["ip_camera"] = normalized_url
+
+        # Se a fonte atual for IP, só reinicia se a nova URL estiver acessível
+        if camera_config["current_source"] != 0:
+            ok, err = _probe_source(normalized_url)
+            if not ok:
+                return {
+                    "success": False,
+                    "message": f"URL atualizada, mas a câmera IP não respondeu: {err}",
+                    "ip_url": normalized_url,
+                    "current_source": "ip_camera",
+                }
+            # Trocar de forma segura
+            try:
+                if detector:
+                    detector.stop()
+            except Exception:
+                pass
+            detector = VisualDetector(src=normalized_url)
+
+        return {
+            "success": True,
+            "ip_url": normalized_url,
+            "current_source": (
+                "webcam" if camera_config["current_source"] == 0 else "ip_camera"
+            ),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao atualizar IP: {str(e)}")
+
+
+@router.get("/users")
+async def list_users(limit: int = 100, current_user: str = Depends(get_current_user)):
+    """Lista usuários cadastrados (campos públicos)."""
+    try:
+        users = await user_repository.find_all()
+        public_users = [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "created_at": u.created_at,
+            }
+            for u in users[:limit]
+        ]
+        return public_users
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @router.get("/video_feed")
@@ -104,7 +239,7 @@ async def get_performance():
 
 
 @router.post("/camera/switch")
-async def switch_camera(source: str, current_user: str = Depends(get_current_user)):
+async def switch_camera(source: str):
     """Troca entre webcam e IP camera."""
     if source not in camera_config["available_sources"]:
         raise HTTPException(
@@ -113,30 +248,91 @@ async def switch_camera(source: str, current_user: str = Depends(get_current_use
         )
 
     try:
-        new_source = camera_config["available_sources"][source]
+        if source == "ip_camera":
+            new_source = camera_config.get("ip_url") or camera_config["available_sources"].get("ip_camera") or ""
+            if not new_source:
+                return {
+                    "success": False,
+                    "message": "Nenhuma URL de câmera IP configurada. Salve a URL em /camera/ip.",
+                    "current_source": (
+                        "webcam" if camera_config["current_source"] == 0 else "ip_camera"
+                    ),
+                    "stream_enabled": camera_config["stream_enabled"],
+                }
+        else:
+            new_source = camera_config["available_sources"][source]
 
-        # Parar detector atual
+        # Se for IP camera, validar antes de parar a atual
+        if source == "ip_camera":
+            ok, err = _probe_source(new_source)
+            if not ok:
+                return {
+                    "success": False,
+                    "message": f"Não foi possível conectar na câmera IP: {err}",
+                    "current_source": (
+                        "webcam" if camera_config["current_source"] == 0 else "ip_camera"
+                    ),
+                    "stream_enabled": camera_config["stream_enabled"],
+                }
+
+        # Guardar antigo
         global detector
-        if detector:
-            detector.stop()
+        old_detector = detector
+        old_source = camera_config["current_source"]
 
-        # Inicializar novo detector
-        detector = VisualDetector(src=new_source)
-        camera_config["current_source"] = new_source
+        # Tentar trocar
+        try:
+            if old_detector:
+                try:
+                    old_detector.stop()
+                except Exception:
+                    pass
+            detector = VisualDetector(src=new_source)
+            camera_config["current_source"] = new_source
+        except Exception as switch_err:
+            # Fallback automático para webcam se a troca falhar
+            fallback_source = camera_config["available_sources"].get("webcam", 0)
+            try:
+                detector = VisualDetector(src=fallback_source)
+                camera_config["current_source"] = fallback_source
+                return {
+                    "success": False,
+                    "message": f"Falha ao trocar para {source}. Retornado à webcam. Erro: {switch_err}",
+                    "current_source": "webcam",
+                    "stream_enabled": camera_config["stream_enabled"],
+                }
+            except Exception:
+                # Se até a webcam falhar, manter sistema online sem detector
+                detector = None
+                camera_config["current_source"] = old_source
+                return {
+                    "success": False,
+                    "message": f"Falha geral ao inicializar câmera. Verifique dispositivos e URL.",
+                    "current_source": (
+                        "webcam" if old_source == 0 else "ip_camera"
+                    ),
+                    "stream_enabled": camera_config["stream_enabled"],
+                }
 
-        # Aguardar inicialização
-        await asyncio.sleep(1.0)
-
+        # Aguardar inicialização breve e responder
+        await asyncio.sleep(0.7)
         return {
             "success": True,
             "message": f"Câmera trocada para {source}",
             "current_source": source,
             "stream_enabled": camera_config["stream_enabled"],
-            "user": current_user,
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao trocar câmera: {str(e)}")
+        # Não quebrar toda a API
+        return {
+            "success": False,
+            "message": f"Erro ao trocar câmera: {str(e)}",
+            "current_source": (
+                "webcam" if camera_config["current_source"] == 0 else "ip_camera"
+            ),
+            "stream_enabled": camera_config["stream_enabled"],
+        }
 
 
 @router.post("/stream/control")

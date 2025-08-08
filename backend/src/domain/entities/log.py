@@ -8,9 +8,9 @@ class Log(BaseModel):
     id: Optional[str] = None
     timestamp: datetime = Field(..., description="Timestamp da detecção")
     count: int = Field(..., description="Quantidade de pessoas detectadas")
-    details: Dict[str, Any] = Field(default={}, description="Detalhes da detecção")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Detalhes da detecção")
     user: Optional[str] = Field(None, description="Usuário que criou o log")
-    created_at: datetime = Field(default=datetime.now)
+    created_at: datetime = Field(default_factory=datetime.now)
     
     class Config:
         orm_mode = True

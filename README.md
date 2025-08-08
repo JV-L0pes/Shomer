@@ -27,13 +27,13 @@ O **Shomer** é um sistema avançado de detecção em tempo real que utiliza YOL
 ### 📊 Monitoramento e Analytics
 - **Estatísticas em Tempo Real**: Contadores de pessoas detectadas
 - **Métricas de Performance**: FPS, latência e uso de recursos
-- **Logs Detalhados**: Sistema de logging com MongoDB
+- **Logs Detalhados**
 - **Exportação de Dados**: Exporte relatórios em CSV
 
 ### 🏗️ Arquitetura Moderna
 - **Backend FastAPI**: API RESTful de alta performance
 - **Frontend React**: Interface moderna com TypeScript
-- **Banco MongoDB**: Armazenamento de dados escalável
+- **Banco PostgreSQL**: Armazenamento de dados relacional
 - **Docker**: Containerização completa do sistema
 
 ## 🚀 Instalação e Uso
@@ -67,7 +67,8 @@ docker-compose up -d
 4. **Acesse a aplicação**
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
-- MongoDB: localhost:27017
+  - PostgreSQL: localhost:5432
+  - pgAdmin: http://localhost:5050
 
 ### 🔧 Instalação Local
 
@@ -77,9 +78,7 @@ docker-compose up -d
 cd backend
 pip install -r requirements.txt
 
-# Configure o MongoDB
-# Instale MongoDB ou use Docker:
-docker run -d -p 27017:27017 --name mongo mongo:6.0
+# Configure o PostgreSQL (via Docker Compose incluído)
 
 # Execute o backend
 python main.py
@@ -142,8 +141,8 @@ JWT_EXPIRATION_MINUTES=60
 # Token de Convite
 INVITATION_TOKEN=your-invitation-token
 
-# MongoDB
-MONGODB_URI=mongodb://mongo:27017/shomerdb
+# Postgres
+DATABASE_URL=postgresql+asyncpg://shomer_user:shomer_pass_123@postgres:5432/shomerdb
 ```
 
 ### Configurações de IP Camera
@@ -232,7 +231,7 @@ Shomer-UIbuttons/
 │   ├── main.py              # API FastAPI principal
 │   ├── detection.py         # Detector otimizado
 │   ├── config.py            # Configurações centralizadas
-│   ├── db.py                # Conexão MongoDB
+│   ├── (ORM)                # Conexão PostgreSQL (SQLAlchemy async)
 │   ├── requirements.txt     # Dependências Python
 │   └── shomer/              # Módulo principal
 │       ├── application/     # Casos de uso
@@ -247,7 +246,7 @@ Shomer-UIbuttons/
 │   │   └── types/          # Definições TypeScript
 │   ├── package.json        # Dependências Node.js
 │   └── vite.config.js      # Configuração Vite
-├── mongo-init/             # Scripts de inicialização MongoDB
+├── (pg-init/)              # Scripts de inicialização PostgreSQL (opcional)
 ├── docker-compose.yml      # Orquestração Docker
 ├── Dockerfile.backend      # Container do backend
 ├── Dockerfile.frontend     # Container do frontend
@@ -257,8 +256,8 @@ Shomer-UIbuttons/
 ### Tecnologias Backend
 - **FastAPI**: Framework web de alta performance
 - **Uvicorn**: Servidor ASGI
-- **MongoDB**: Banco de dados NoSQL
-- **Motor**: Driver assíncrono para MongoDB
+- **PostgreSQL**: Banco de dados relacional
+- **SQLAlchemy (async)**: ORM assíncrono
 - **PyJWT**: Autenticação JWT
 - **Passlib**: Hash de senhas
 - **OpenCV**: Processamento de vídeo
@@ -292,7 +291,7 @@ Shomer-UIbuttons/
 
 ### Autenticação falha
 1. Verifique se o token de convite está correto
-2. Confirme se o MongoDB está rodando
+2. Confirme se o PostgreSQL está rodando
 3. Verifique as variáveis de ambiente JWT
 
 ### Stream não inicia
@@ -326,7 +325,7 @@ npm run dev
 ### Estrutura de Desenvolvimento
 - **Backend**: FastAPI com hot reload
 - **Frontend**: Vite com hot reload
-- **MongoDB**: Container Docker persistente
+- **PostgreSQL**: Container Docker persistente
 - **CORS**: Configurado para desenvolvimento
 
 ### Comandos Úteis
@@ -340,11 +339,7 @@ docker-compose up --build
 docker-compose logs -f backend
 docker-compose logs -f frontend
 
-# Acessar MongoDB
-docker exec -it shomer-mongo mongosh
-
-# Backup do banco
-docker exec shomer-mongo mongodump --out /backup
+# Acessar pgAdmin: http://localhost:5050
 ```
 
 ## 📝 Licença

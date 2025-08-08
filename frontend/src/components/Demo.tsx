@@ -113,7 +113,10 @@ export default function Demo({
         >
           {/* Video Stream - Ocupa 2/3 da largura */}
           <div className="lg:col-span-2">
-            <VideoStream src="/video_feed" />
+            {(() => {
+              const apiUrl = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
+              return <VideoStream src={`${apiUrl}/video_feed`} />;
+            })()}
           </div>
 
           {/* Controles de Câmera - Ocupa 1/3 da largura */}

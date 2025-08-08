@@ -9,7 +9,7 @@ class User(BaseModel):
     username: str = Field(..., min_length=3, description="Nome de usuário")
     email: EmailStr = Field(..., description="Email válido")
     password_hash: str = Field(..., description="Hash da senha")
-    created_at: datetime = Field(default=datetime.now)
+    created_at: datetime = Field(default_factory=datetime.now)
     
     class Config:
         orm_mode = True

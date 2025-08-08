@@ -1,18 +1,28 @@
 services:
-  mongo:
-    build:
-      context: ./mongo-init
-      dockerfile: Dockerfile
+  postgres:
+    image: postgres:15-alpine
     restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
-      MONGO_APP_USER: ${MONGO_APP_USER:-shomer_user}
-      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:-shomer_pass_123}
+      POSTGRES_DB: ${POSTGRES_DB:-shomerdb}
+      POSTGRES_USER: ${POSTGRES_USER:-shomer_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shomer_pass_123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - app_net
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
     networks:
       - app_net
 
@@ -24,12 +34,12 @@ services:
     env_file:
       - ./.env
     environment:
-      - MONGODB_URI=${MONGODB_URI}
+      - DATABASE_URL=${DATABASE_URL}
       - YOLO_MODEL=${YOLO_MODEL}
     ports:
       - "8000:8000"
     depends_on:
-      - mongo
+      - postgres
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s      # roda a cada 10 segundos
@@ -52,7 +62,7 @@ services:
       - app_net
 
 volumes:
-  mongo_data:
+  pg_data:
 
 networks:
   app_net:
