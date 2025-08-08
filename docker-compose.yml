@@ -36,6 +36,8 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - YOLO_MODEL=${YOLO_MODEL}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
     ports:
       - "8000:8000"
     depends_on:
@@ -48,6 +50,7 @@ services:
       start_period: 5s
     networks:
       - app_net
+    gpus: all
 
   frontend:
     build:

@@ -9,8 +9,6 @@
 .env.compose
 
 # Credenciais e configurações de banco de dados
-mongo-init/.env
-mongo-init/secrets/
 config/database.json
 config/secrets.json
 secrets.json
