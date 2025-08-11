@@ -81,9 +81,37 @@ async def security_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+
+    # CSP padrão para a aplicação
+    default_csp = (
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "frame-ancestors 'self'"
     )
+
+    # CSP relaxado apenas para a página de documentação (/docs)
+    # Necessário para permitir os assets do Swagger hospedados em CDN
+    docs_csp = (
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.jsdelivr.net; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "connect-src 'self'; "
+        "frame-ancestors 'self'"
+    )
+
+    request_path = request.url.path or ""
+    if request_path.startswith("/docs") or request_path.startswith("/redoc"):
+        response.headers["Content-Security-Policy"] = docs_csp
+    else:
+        response.headers["Content-Security-Policy"] = default_csp
 
     # Adicionar headers CORS se não estiverem presentes
     if "Access-Control-Allow-Origin" not in response.headers:
