@@ -222,6 +222,14 @@ DATABASE_URL=postgresql+asyncpg://shomer_user:shomer_pass_123@postgres:5432/shom
 - **Precisão**: >90% para pessoas, >95% para rostos
 - **Otimização**: Cache inteligente e threading avançado
 
+### Características de Detecção
+- 🔍 **Detecção Dupla**: Corpos (YOLOv8) + Rostos (FaceDetector)
+- ⚡ **Performance Otimizada**: Arquitetura multi-thread para captura e inferência
+- 🎥 **Múltiplas Fontes**: Suporte para webcam e streams IP
+- 📊 **Métricas em Tempo Real**: FPS e estatísticas de detecção
+- 🎨 **Interface Visual**: Bounding boxes e informações sobrepostas
+- ⚙️ **Configurável**: Parâmetros ajustáveis via arquivo de configuração
+
 ## 🏗️ Arquitetura
 
 ### Estrutura do Projeto
@@ -342,10 +350,6 @@ docker-compose logs -f frontend
 # Acessar pgAdmin: http://localhost:5050
 ```
 
-## 📝 Licença
-
-Este projeto está sob a licença MIT.
-
 ## 🤝 Contribuição
 
 1. Fork o projeto
@@ -361,6 +365,22 @@ Para suporte e dúvidas:
 - Consulte a documentação da API em `/docs` quando o backend estiver rodando
 - Verifique os logs do sistema
 
+## 📝 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+
+## 👨‍💻 Autor
+
+**JV-L0pes**
+- GitHub: [@JV-L0pes](https://github.com/JV-L0pes)
+
+## 🙏 Agradecimentos
+
+- Comunidade YOLOv8
+- InsightFace
+- OpenCV Community
+
 ---
 
-⭐ Se este projeto foi útil, considere dar uma estrela! 
+⭐ Se este projeto foi útil, considere dar uma estrela!
+  
