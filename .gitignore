@@ -303,3 +303,4 @@ deployment/
 # data/
 # outputs/
 # results/
+#whatever_model_you_want_to_ignore/
